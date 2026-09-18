@@ -1,0 +1,30 @@
+{
+  "id": "warning_missing",
+  "description": "No health warning statement at all",
+  "record": {
+    "cola_id": "24-022",
+    "brand_name": "Old Tom Distillery",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "alcohol_content_pct": 45.0,
+    "net_contents": "750 mL",
+    "bottler_name": "Old Tom Distilling Co.",
+    "bottler_address": "Bardstown, Kentucky",
+    "country_of_origin": "Product of the United States"
+  },
+  "observations": {
+    "brand_name": "OLD TOM DISTILLERY",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "alcohol_statement": "45% Alc./Vol. (90 Proof)",
+    "net_contents": "750 mL",
+    "bottler_name": "Old Tom Distilling Co.",
+    "bottler_address": "Bardstown, Kentucky",
+    "country_of_origin": "Product of the United States",
+    "warning_text": null,
+    "warning_prefix_is_bold": null,
+    "legibility_notes": []
+  },
+  "expected_verdict": "fail",
+  "expected_failing_fields": [
+    "government_warning"
+  ]
+}

@@ -1,4 +1,4 @@
-.PHONY: install dev test eval lint
+.PHONY: install dev test eval lint fixtures
 
 install:
 	python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
@@ -14,3 +14,6 @@ eval:
 
 lint:
 	.venv/bin/ruff check app tests eval
+
+fixtures:
+	.venv/bin/python fixtures/generate.py

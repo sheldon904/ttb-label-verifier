@@ -9,5 +9,5 @@ venv/
 .ruff_cache/
 .DS_Store
 eval/out/
-fixtures/labels/*.png
-!fixtures/labels/.gitkeep
+# fixture PNGs are committed on purpose -- the eval set must be
+# reproducible without the system fonts used to render them

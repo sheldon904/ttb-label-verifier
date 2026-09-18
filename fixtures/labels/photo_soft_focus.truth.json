@@ -1,0 +1,30 @@
+{
+  "id": "photo_soft_focus",
+  "description": "Compliant label, slightly out of focus",
+  "record": {
+    "cola_id": "24-052",
+    "brand_name": "Copper Ridge Reserve",
+    "class_type": "Single Malt Whisky",
+    "alcohol_content_pct": 43.0,
+    "net_contents": "700 mL",
+    "bottler_name": "Copper Ridge Distillers",
+    "bottler_address": "Inverness, Scotland",
+    "country_of_origin": "Product of Scotland"
+  },
+  "observations": {
+    "brand_name": "COPPER RIDGE RESERVE",
+    "class_type": "Single Malt Whisky",
+    "alcohol_statement": "43% Alc./Vol. (86 Proof)",
+    "net_contents": "700 mL",
+    "bottler_name": "Copper Ridge Distillers",
+    "bottler_address": "Inverness, Scotland",
+    "country_of_origin": "Product of Scotland",
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "legibility_notes": [
+      "image is slightly out of focus"
+    ]
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": []
+}

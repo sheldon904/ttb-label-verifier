@@ -8,7 +8,14 @@ can be shown exactly which rule fired and which regulation it came from.
 from __future__ import annotations
 
 from app.models import ApplicationRecord, CheckResult, LabelExtraction, ReviewResult, Verdict
-from app.rules.fields import check_alcohol_content, check_brand_name, check_net_contents
+from app.rules.fields import (
+    check_alcohol_content,
+    check_bottler,
+    check_brand_name,
+    check_class_type,
+    check_country_of_origin,
+    check_net_contents,
+)
 from app.rules.warning import check_warning_text, check_warning_typography
 
 
@@ -56,8 +63,12 @@ def review(record: ApplicationRecord, extraction: LabelExtraction,
            elapsed_ms: int | None = None) -> ReviewResult:
     checks: list[CheckResult] = [
         check_brand_name(record.brand_name, extraction.brand_name),
+        check_class_type(record.class_type, extraction.class_type),
         *check_alcohol_content(record.alcohol_content_pct, extraction.alcohol_statement),
         check_net_contents(record.net_contents, extraction.net_contents),
+        *check_bottler(record.bottler_name, record.bottler_address,
+                       extraction.bottler_name, extraction.bottler_address),
+        check_country_of_origin(record.country_of_origin, extraction.country_of_origin),
         check_warning_text(extraction.warning_text, extraction.warning_legibility),
         check_warning_typography(extraction.warning_prefix_is_bold),
     ]

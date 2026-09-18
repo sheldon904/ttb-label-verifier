@@ -178,6 +178,7 @@ class OcrExtractor:
 
         warning_text, warning_block = layout.extract_warning(lines)
         warning_indices = {i for i, ln in enumerate(lines) if ln in warning_block}
+        warning_start = min(warning_indices) if warning_indices else None
 
         brand, class_type, dominance = layout.pick_brand_and_class(lines, warning_indices)
         degraded = bool(lines) and dominance < BRAND_DOMINANCE_FLOOR
@@ -190,8 +191,10 @@ class OcrExtractor:
         net_contents = layout.pick_net_contents(lines, warning_indices)
         country = layout.pick_country(lines, warning_indices)
         bottler_name, bottler_address = layout.pick_bottler(
-            lines, warning_indices | {i for i, ln in enumerate(lines)
-                                      if ln.text.strip() in {brand, class_type}}
+            lines,
+            warning_indices | {i for i, ln in enumerate(lines)
+                               if ln.text.strip() in {brand, class_type}},
+            warning_start=warning_start,
         )
 
         binary = np.asarray(binarize(image), dtype=np.uint8)
@@ -257,6 +260,9 @@ class OcrExtractor:
                     "alcohol_content": line_conf(alcohol),
                     "proof_consistency": line_conf(alcohol),
                     "net_contents": line_conf(net_contents),
+                    "bottler_name": line_conf(bottler_name),
+                    "bottler_address": line_conf(bottler_address),
+                    "country_of_origin": line_conf(country),
                 }.items() if value is not None or degraded
             },
         }

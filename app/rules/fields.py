@@ -102,8 +102,8 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None) -> 
         ))
     elif expected_pct is None:
         results.append(CheckResult(
-            field="alcohol_content", verdict=Verdict.FLAG, observed=statement,
-            reason="Application record has no alcohol content to compare against.", citation=citation,
+            field="alcohol_content", verdict=Verdict.PASS, observed=statement,
+            reason=NOT_PROVIDED, citation=citation, advisory=True,
         ))
     elif abs(abv - expected_pct) <= ABV_TOLERANCE_PCT:
         results.append(CheckResult(
@@ -165,8 +165,8 @@ def check_net_contents(expected: str | None, observed: str | None) -> CheckResul
         )
     if not expected:
         return CheckResult(
-            field="net_contents", verdict=Verdict.FLAG, observed=observed,
-            reason="Application record has no net contents to compare against.", citation=citation,
+            field="net_contents", verdict=Verdict.PASS, observed=observed,
+            reason=NOT_PROVIDED, citation=citation, advisory=True,
         )
 
     exp_ml, obs_ml = parse_net_contents_ml(expected), parse_net_contents_ml(observed)
@@ -185,3 +185,189 @@ def check_net_contents(expected: str | None, observed: str | None) -> CheckResul
         reason=f"Label states {obs_ml:g} mL but the application states {exp_ml:g} mL.",
         citation=citation,
     )
+
+
+# --- class / type designation ----------------------------------------------
+
+# Shown when the application record omits a field. This is a gap in the
+# submitted data, not a finding about the label, so it never changes the
+# verdict -- but it stays visible on the checklist, because an agent needs to
+# see that an element went unverified rather than quietly disappearing.
+NOT_PROVIDED = "Not provided on the application, so this element was not verified."
+
+CLASS_TYPE_PASS_THRESHOLD = 92.0
+CLASS_TYPE_FLAG_THRESHOLD = 75.0
+
+
+def check_class_type(expected: str | None, observed: str | None) -> CheckResult:
+    """The class/type designation, e.g. "Kentucky Straight Bourbon Whiskey".
+
+    Stricter than a brand name, because the designation is regulated vocabulary
+    rather than a mark: "Straight Bourbon" and "Blended Bourbon" are different
+    products, not spelling variants. Case and spacing are still forgiven.
+    """
+    citation = "27 CFR 5.63 (class and type)"
+    if expected is None:
+        return CheckResult(
+            field="class_type", verdict=Verdict.PASS, observed=observed,
+            reason=NOT_PROVIDED, citation=citation, advisory=True,
+        )
+    if not observed:
+        return CheckResult(
+            field="class_type", verdict=Verdict.FAIL, expected=expected,
+            reason="No class or type designation found on the label.", citation=citation,
+        )
+
+    score = fuzz.ratio(normalize_brand(expected), normalize_brand(observed))
+    if score >= CLASS_TYPE_PASS_THRESHOLD:
+        verdict, reason = Verdict.PASS, (
+            "Exact match." if expected == observed
+            else f"Matches after normalization (similarity {score:.0f}%)."
+        )
+    elif score >= CLASS_TYPE_FLAG_THRESHOLD:
+        verdict = Verdict.FLAG
+        reason = f"Designation differs from the application (similarity {score:.0f}%); agent review required."
+    else:
+        verdict = Verdict.FAIL
+        reason = f"Class/type on the label does not match the application (similarity {score:.0f}%)."
+
+    return CheckResult(field="class_type", verdict=verdict, expected=expected,
+                       observed=observed, reason=reason, citation=citation)
+
+
+# --- bottler / producer -----------------------------------------------------
+
+BOTTLER_PASS_THRESHOLD = 88.0
+
+
+def check_bottler(expected_name: str | None, expected_address: str | None,
+                  observed_name: str | None, observed_address: str | None) -> list[CheckResult]:
+    """Name and address of the bottler or producer.
+
+    Matched with token-set similarity rather than a straight ratio, because an
+    address legitimately varies in ordering and abbreviation between a form field
+    and printed artwork ("Bardstown, KY" against "Bardstown, Kentucky"). A name
+    mismatch is substantive and can fail; an address mismatch only ever flags,
+    since formatting variance is the common case and a wrong rejection here
+    would be for a difference that carries no regulatory meaning.
+    """
+    citation = "27 CFR 5.66 (name and address)"
+    results: list[CheckResult] = []
+
+    if not expected_name:
+        results.append(CheckResult(
+            field="bottler_name", verdict=Verdict.PASS, observed=observed_name,
+            reason=NOT_PROVIDED, citation=citation, advisory=True))
+    if not expected_address:
+        results.append(CheckResult(
+            field="bottler_address", verdict=Verdict.PASS, observed=observed_address,
+            reason=NOT_PROVIDED, citation=citation, advisory=True))
+
+    if expected_name:
+        if not observed_name:
+            results.append(CheckResult(
+                field="bottler_name", verdict=Verdict.FAIL, expected=expected_name,
+                reason="No bottler or producer name found on the label.", citation=citation))
+        else:
+            score = fuzz.token_set_ratio(normalize_brand(expected_name),
+                                         normalize_brand(observed_name))
+            if score >= BOTTLER_PASS_THRESHOLD:
+                verdict, reason = Verdict.PASS, f"Matches the application (similarity {score:.0f}%)."
+            elif score >= 65.0:
+                verdict = Verdict.FLAG
+                reason = f"Differs from the application (similarity {score:.0f}%); agent review required."
+            else:
+                verdict = Verdict.FAIL
+                reason = f"Bottler name does not match the application (similarity {score:.0f}%)."
+            results.append(CheckResult(
+                field="bottler_name", verdict=verdict, expected=expected_name,
+                observed=observed_name, reason=reason, citation=citation))
+
+    if expected_address:
+        if not observed_address:
+            results.append(CheckResult(
+                field="bottler_address", verdict=Verdict.FLAG, expected=expected_address,
+                reason="No bottler address found on the label.", citation=citation))
+        else:
+            score = fuzz.token_set_ratio(normalize_brand(expected_address),
+                                         normalize_brand(observed_address))
+            verdict = Verdict.PASS if score >= 80.0 else Verdict.FLAG
+            reason = (f"Matches the application (similarity {score:.0f}%)." if verdict is Verdict.PASS
+                      else f"Differs from the application (similarity {score:.0f}%). Address "
+                           "formatting varies between forms and artwork, so this is referred "
+                           "for review rather than rejected.")
+            results.append(CheckResult(
+                field="bottler_address", verdict=verdict, expected=expected_address,
+                observed=observed_address, reason=reason, citation=citation))
+
+    return results
+
+
+# --- country of origin ------------------------------------------------------
+
+_DOMESTIC = re.compile(r"\b(united states|u\.?s\.?a?\.?|america)\b", re.IGNORECASE)
+
+# "Product of Scotland" and "Product of Canada" are 83% similar as whole
+# strings, because they share the boilerplate. Comparing them intact would pass
+# a Scotch declared as Canadian. Only the country itself is compared.
+_ORIGIN_BOILERPLATE = re.compile(
+    r"^\s*(?:product|produce|produced|bottled|distilled|made|imported)\s+"
+    r"(?:of|in|by|from)\s+(?:the\s+)?",
+    re.IGNORECASE,
+)
+
+
+def country_name(value: str) -> str:
+    """Strip the declaration boilerplate, leaving the country."""
+    return _ORIGIN_BOILERPLATE.sub("", value).strip(" .,")
+
+
+def is_import(country: str | None) -> bool:
+    """A record with no country, or a domestic one, is not an import."""
+    return bool(country) and not _DOMESTIC.search(country)
+
+
+def check_country_of_origin(expected: str | None, observed: str | None) -> CheckResult:
+    """Required on imports only.
+
+    Deliberately conditional: demanding a country-of-origin statement on a
+    Kentucky bourbon would generate a rejection for omitting something the
+    regulation never asked for.
+    """
+    citation = "27 CFR 5.69 (country of origin)"
+
+    if expected is None:
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.PASS, observed=observed,
+            reason=NOT_PROVIDED, citation=citation, advisory=True,
+        )
+
+    if not is_import(expected):
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.PASS, expected=expected,
+            observed=observed,
+            reason="Not an imported product; a country of origin statement is not required.",
+            citation=citation, advisory=True,
+        )
+
+    if not observed:
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.FAIL, expected=expected,
+            reason=f"The application declares an imported product ({expected}) but no country "
+                   "of origin statement was found on the label.",
+            citation=citation,
+        )
+
+    score = fuzz.token_set_ratio(normalize_brand(country_name(expected)),
+                                 normalize_brand(country_name(observed)))
+    if score >= 80.0:
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.PASS, expected=expected,
+            observed=observed, reason=f"Matches the application (similarity {score:.0f}%).",
+            citation=citation)
+    return CheckResult(
+        field="country_of_origin", verdict=Verdict.FAIL, expected=expected,
+        observed=observed,
+        reason=f"Country of origin on the label does not match the application "
+               f"(similarity {score:.0f}%).",
+        citation=citation)

@@ -202,16 +202,38 @@ def pick_country(lines: list[Line], exclude: set[int]) -> str | None:
     return first_match(lines, _COUNTRY_RE, exclude)
 
 
-def pick_bottler(lines: list[Line], exclude: set[int]) -> tuple[str | None, str | None]:
-    """Bottler name and address: the small-type lines below the statements and
-    above the warning, excluding the country-of-origin line."""
-    body = [
-        (i, ln) for i, ln in enumerate(lines)
-        if i not in exclude and ln.text.strip()
+def pick_bottler(
+    lines: list[Line], exclude: set[int], warning_start: int | None = None
+) -> tuple[str | None, str | None]:
+    """Bottler name and address.
+
+    Anchored positionally rather than by taking the last lines of the page. The
+    bottler block sits below the alcohol and volume statements and above the
+    warning, which is where labels actually put it.
+
+    Taking the tail instead was wrong in two ways found on the fixture set: when
+    the warning block could not be detected (a blurred photo) the tail was
+    warning text, and when extra lines appeared the pair shifted and the address
+    was read as the name. Both produced confident failures against a compliant
+    label.
+    """
+    statement_end = -1
+    for i, ln in enumerate(lines):
+        if i in exclude:
+            continue
+        if _ABV_RE.search(ln.text) or _VOLUME_RE.search(ln.text):
+            statement_end = i
+
+    upper_bound = warning_start if warning_start is not None else len(lines)
+
+    block = [
+        ln for i, ln in enumerate(lines)
+        if statement_end < i < upper_bound and i not in exclude and ln.text.strip()
         and not _ABV_RE.search(ln.text) and not _VOLUME_RE.search(ln.text)
         and not _COUNTRY_RE.search(ln.text)
     ]
-    if len(body) < 2:
-        return (body[0][1].text.strip() if body else None), None
-    tail = body[-2:]
-    return tail[0][1].text.strip(), tail[1][1].text.strip()
+    if not block:
+        return None, None
+    if len(block) == 1:
+        return block[0].text.strip(), None
+    return block[0].text.strip(), block[1].text.strip()

@@ -17,12 +17,24 @@
     alcohol_content: "Alcohol content",
     proof_consistency: "Proof statement",
     net_contents: "Net contents",
+    bottler_name: "Bottler / producer",
+    bottler_address: "Bottler address",
+    country_of_origin: "Country of origin",
     government_warning: "Government warning",
     warning_typography: "Warning legibility"
   };
 
   var MARKS = { pass: "✓", flag: "⚠", fail: "✗" };
   var STATUS = { pass: "Pass", flag: "Review", fail: "Fail" };
+
+  /* The checklist keeps a stable running order -- the same one an agent reads a
+     label in, and the same one as the paper checklist it replaces. Within the
+     list, unresolved items still sort to the top. */
+  var FIELD_ORDER = [
+    "brand_name", "class_type", "alcohol_content", "proof_consistency",
+    "net_contents", "bottler_name", "bottler_address", "country_of_origin",
+    "government_warning", "warning_typography"
+  ];
   var VERDICT_TEXT = {
     pass: "Passes all checks",
     flag: "Needs agent review",
@@ -149,7 +161,10 @@
     /* FAIL first, then FLAG, then PASS: an agent triages exceptions. */
     var order = { fail: 0, flag: 1, pass: 2 };
     data.checks.slice().sort(function (a, b) {
-      return order[a.verdict] - order[b.verdict];
+      if (order[a.verdict] !== order[b.verdict]) {
+        return order[a.verdict] - order[b.verdict];
+      }
+      return FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field);
     }).forEach(function (c) { list.appendChild(renderCheck(c)); });
     result.appendChild(list);
 

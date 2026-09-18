@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Verdict(str, Enum):
@@ -73,6 +73,21 @@ class LabelExtraction(BaseModel):
             "compliant label is never reported as a violation."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_legibility(cls, data):
+        """Default legibility from whether warning text is present.
+
+        An extractor that reports text has by definition read it, and one that
+        reports none has not. Only a caller with better information -- OCR that
+        detected small print it could not resolve -- states it explicitly, and
+        an explicit value always wins.
+        """
+        if isinstance(data, dict) and "warning_legibility" not in data:
+            data = {**data,
+                    "warning_legibility": "read" if data.get("warning_text") else "absent"}
+        return data
 
     field_confidence: dict[str, float] = Field(
         default_factory=dict,

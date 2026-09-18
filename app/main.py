@@ -119,6 +119,9 @@ async def api_review(
     alcohol_content_pct: str = Form(""),
     net_contents: str = Form(""),
     class_type: str = Form(""),
+    bottler_name: str = Form(""),
+    bottler_address: str = Form(""),
+    country_of_origin: str = Form(""),
 ):
     raw = await image.read()
     if len(raw) > settings.max_upload_bytes:
@@ -138,6 +141,9 @@ async def api_review(
         class_type=class_type.strip() or None,
         alcohol_content_pct=abv,
         net_contents=net_contents.strip() or None,
+        bottler_name=bottler_name.strip() or None,
+        bottler_address=bottler_address.strip() or None,
+        country_of_origin=country_of_origin.strip() or None,
     )
     return await _run(raw, record)
 

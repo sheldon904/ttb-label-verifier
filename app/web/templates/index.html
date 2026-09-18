@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Label Verification</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<header class="banner" role="banner">
+  <p><strong>Prototype.</strong> Not connected to COLA. No uploaded image or application
+     data is stored — everything is processed in memory and discarded.</p>
+</header>
+
+<main id="main">
+  <h1>Label Verification</h1>
+  <p class="lede">Upload label artwork and the application details. Every required field
+     is checked and the result is shown as a checklist.</p>
+
+  {% if not vlm_ready %}
+  <div class="alert alert--warn" role="status">
+    <strong>Extraction is not configured.</strong> Set <code>ANTHROPIC_API_KEY</code> in
+    <code>.env</code>, or run with <code>LABEL_EXTRACTOR=stub</code> to use the sample labels below.
+  </div>
+  {% endif %}
+
+  <div class="layout">
+    <section class="panel" aria-labelledby="form-heading">
+      <h2 id="form-heading">Application details</h2>
+
+      <form id="review-form">
+        <div class="field">
+          <label for="cola_id">COLA ID</label>
+          <input id="cola_id" name="cola_id" type="text" required autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="brand_name">Brand name</label>
+          <input id="brand_name" name="brand_name" type="text" required autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="class_type">Class / type <span class="optional">(optional)</span></label>
+          <input id="class_type" name="class_type" type="text" autocomplete="off">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="alcohol_content_pct">Alcohol content</label>
+            <div class="suffixed">
+              <input id="alcohol_content_pct" name="alcohol_content_pct" type="text"
+                     inputmode="decimal" autocomplete="off">
+              <span aria-hidden="true">% Alc./Vol.</span>
+            </div>
+          </div>
+          <div class="field">
+            <label for="net_contents">Net contents</label>
+            <input id="net_contents" name="net_contents" type="text"
+                   placeholder="750 mL" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="image">Label artwork</label>
+          <div id="dropzone" class="dropzone" tabindex="0" role="button"
+               aria-describedby="dropzone-help">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 16V4m0 0L7 9m5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round"/>
+            </svg>
+            <p class="dropzone__label">Choose an image or drag it here</p>
+            <p id="dropzone-help" class="dropzone__hint">JPEG, PNG, WEBP or TIFF</p>
+            <input id="image" name="image" type="file"
+                   accept="image/jpeg,image/png,image/webp,image/tiff" class="visually-hidden">
+          </div>
+          <p id="filename" class="filename" aria-live="polite"></p>
+        </div>
+
+        <button type="submit" class="btn btn--primary" id="submit">Check this label</button>
+      </form>
+
+      {% if examples %}
+      <div class="examples">
+        <h3>Or try a sample label</h3>
+        <ul>
+          {% for ex in examples %}
+          <li>
+            <button type="button" class="btn btn--link" data-example="{{ ex.id }}">
+              {{ ex.description }}
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="panel" aria-labelledby="result-heading" aria-live="polite">
+      <h2 id="result-heading">Result</h2>
+      <div id="result">
+        <p class="placeholder">Results will appear here once a label is checked.</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <p>Checks are evaluated against 27 CFR Parts 5 and 16. This tool assists review;
+     it does not make determinations.</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

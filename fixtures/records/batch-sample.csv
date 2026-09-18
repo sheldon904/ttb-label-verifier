@@ -1,0 +1,23 @@
+cola_id,brand_name,class_type,abv,net_contents,bottler_name,bottler_address,country,image
+24-030,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,abv_mismatch.png
+24-032,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,abv_no_proof.png
+24-010,Stone's Throw,Straight Rye Whiskey,50.0,750 mL,Stone's Throw Spirits LLC,"Portland, Oregon",Product of the United States,brand_case_difference.png
+24-011,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,brand_near_miss.png
+24-012,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,brand_wrong.png
+24-001,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,clean_01.png
+24-002,Stone's Throw,Straight Rye Whiskey,50.0,750 mL,Stone's Throw Spirits LLC,"Portland, Oregon",Product of the United States,clean_02.png
+24-003,Copper Ridge Reserve,Single Malt Whisky,43.0,700 mL,Copper Ridge Distillers,"Inverness, Scotland",Product of Scotland,clean_03.png
+24-040,Copper Ridge Reserve,Single Malt Whisky,43.0,750 mL,Copper Ridge Distillers,"Inverness, Scotland",Product of Scotland,net_contents_centilitres.png
+24-041,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,net_contents_missing.png
+24-042,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,net_contents_wrong.png
+24-053,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,photo_compressed.png
+24-051,Stone's Throw,Straight Rye Whiskey,50.0,750 mL,Stone's Throw Spirits LLC,"Portland, Oregon",Product of the United States,photo_glare.png
+24-050,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,photo_skewed.png
+24-054,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,photo_skewed_and_defective.png
+24-052,Copper Ridge Reserve,Single Malt Whisky,43.0,700 mL,Copper Ridge Distillers,"Inverness, Scotland",Product of Scotland,photo_soft_focus.png
+24-031,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,proof_inconsistent.png
+24-024,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_microtype.png
+24-022,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_missing.png
+24-023,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_prefix_not_bold.png
+24-021,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_reworded.png
+24-020,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_title_case.png

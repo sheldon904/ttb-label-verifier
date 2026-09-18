@@ -132,3 +132,11 @@ def test_every_required_element_is_checked():
             "bottler_name", "bottler_address", "country_of_origin",
             "government_warning", "warning_typography"} <= fields
     assert result.verdict is Verdict.PASS
+
+
+def test_truncated_country_statement_flags_rather_than_fails():
+    """Blur truncated "Product of Scotland" to "Product of". The country did not
+    survive the read; that is not the same as a wrong country."""
+    r = check_country_of_origin("Product of Scotland", "Product of")
+    assert r.verdict is Verdict.FLAG
+    assert "could not be read" in r.reason

@@ -215,3 +215,297 @@
     }
   );
 })();
+
+/* --- batch review ------------------------------------------------------
+   Client-orchestrated fan-out over the single-label endpoint. Each label is an
+   independent request, so there is no server-side job state to build, store or
+   expire -- which for a prototype that keeps nothing is the right trade. The
+   cost is that a page refresh loses progress; that is stated in the README.
+
+   The browser holds the concurrency limit. Server-side the work runs on a
+   thread pool, so these requests genuinely run in parallel: measured 3.5x on
+   eight cores, which takes a 300-label batch from about eight minutes to
+   under three. */
+
+(function () {
+  "use strict";
+
+  var CONCURRENCY = 8;
+
+  var modeSingle = document.getElementById("mode-single");
+  var modeBatch = document.getElementById("mode-batch");
+  var panelSingle = document.getElementById("panel-single");
+  var panelBatch = document.getElementById("panel-batch");
+  var recordsInput = document.getElementById("batch-records");
+  var imagesInput = document.getElementById("batch-images");
+  var runButton = document.getElementById("batch-run");
+  var statusBox = document.getElementById("batch-status");
+  var resultsBox = document.getElementById("batch-results");
+
+  if (!modeBatch) return;
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+
+  function setMode(batch) {
+    modeBatch.classList.toggle("is-active", batch);
+    modeSingle.classList.toggle("is-active", !batch);
+    modeBatch.setAttribute("aria-pressed", String(batch));
+    modeSingle.setAttribute("aria-pressed", String(!batch));
+    panelBatch.hidden = !batch;
+    panelSingle.hidden = batch;
+  }
+  modeSingle.addEventListener("click", function () { setMode(false); });
+  modeBatch.addEventListener("click", function () { setMode(true); });
+
+  function note(message, kind) {
+    statusBox.innerHTML = "";
+    var box = el("div", "alert alert--" + (kind || "warn"));
+    box.setAttribute("role", kind === "error" ? "alert" : "status");
+    box.appendChild(document.createTextNode(message));
+    statusBox.appendChild(box);
+  }
+
+  /* Match an image to a record by looking for the COLA ID in the file name.
+     Longest ID first, so "24-0010" is not claimed by "24-001". */
+  function matchImages(records, declared, files) {
+    var ids = records.map(function (r) { return r.cola_id; })
+                     .sort(function (a, b) { return b.length - a.length; });
+    var byId = {};
+    var unmatched = [];
+
+    Array.prototype.forEach.call(files, function (file) {
+      var name = file.name.toLowerCase();
+      for (var id in declared) {
+        if (declared[id] && declared[id].toLowerCase() === file.name.toLowerCase()) {
+          if (!byId[id]) { byId[id] = file; return; }
+        }
+      }
+      for (var i = 0; i < ids.length; i++) {
+        if (name.indexOf(ids[i].toLowerCase()) !== -1 && !byId[ids[i]]) {
+          byId[ids[i]] = file;
+          return;
+        }
+      }
+      unmatched.push(file.name);
+    });
+    return { byId: byId, unmatched: unmatched };
+  }
+
+  function reviewOne(record, file) {
+    var body = new FormData();
+    body.append("image", file);
+    body.append("cola_id", record.cola_id);
+    body.append("brand_name", record.brand_name || "");
+    body.append("class_type", record.class_type || "");
+    body.append("alcohol_content_pct",
+                record.alcohol_content_pct === null || record.alcohol_content_pct === undefined
+                  ? "" : String(record.alcohol_content_pct));
+    body.append("net_contents", record.net_contents || "");
+    body.append("bottler_name", record.bottler_name || "");
+    body.append("bottler_address", record.bottler_address || "");
+    body.append("country_of_origin", record.country_of_origin || "");
+
+    return fetch("/api/review", { method: "POST", body: body })
+      .then(function (response) {
+        return response.json().catch(function () { return {}; }).then(function (payload) {
+          if (!response.ok) {
+            return { cola_id: record.cola_id, verdict: "error",
+                     error: payload.detail || "Server error", checks: [] };
+          }
+          return payload;
+        });
+      })
+      .catch(function () {
+        return { cola_id: record.cola_id, verdict: "error",
+                 error: "Could not reach the server", checks: [] };
+      });
+  }
+
+  /* Bounded worker pool: start N chains, each pulling the next item. */
+  function runPool(items, worker, onProgress) {
+    var next = 0;
+    var done = 0;
+    var results = new Array(items.length);
+
+    function chain() {
+      if (next >= items.length) return Promise.resolve();
+      var index = next++;
+      return worker(items[index]).then(function (value) {
+        results[index] = value;
+        onProgress(++done, items.length);
+        return chain();
+      });
+    }
+    var chains = [];
+    for (var i = 0; i < Math.min(CONCURRENCY, items.length); i++) chains.push(chain());
+    return Promise.all(chains).then(function () { return results; });
+  }
+
+  function renderResults(rows, elapsedMs) {
+    resultsBox.innerHTML = "";
+
+    var counts = { pass: 0, flag: 0, fail: 0, error: 0 };
+    rows.forEach(function (r) { counts[r.verdict] = (counts[r.verdict] || 0) + 1; });
+
+    var summary = el("div", "summary");
+    [["fail", "do not meet requirements"], ["flag", "need review"],
+     ["pass", "pass"], ["error", "could not be checked"]].forEach(function (pair) {
+      if (!counts[pair[0]]) return;
+      summary.appendChild(el("span", "pill pill--" + (pair[0] === "error" ? "none" : pair[0]),
+                             counts[pair[0]] + " " + pair[1]));
+    });
+    summary.appendChild(el("span", "pill pill--none",
+      rows.length + " labels in " + (elapsedMs / 1000).toFixed(1) + " s"));
+    resultsBox.appendChild(summary);
+
+    var exportBtn = el("button", "btn btn--link", "Download results as CSV");
+    exportBtn.type = "button";
+    exportBtn.addEventListener("click", function () { downloadCsv(rows); });
+    resultsBox.appendChild(exportBtn);
+
+    var table = el("table", "results");
+    var thead = el("thead");
+    var hrow = el("tr");
+    ["COLA ID", "Result", "Findings"].forEach(function (h) {
+      hrow.appendChild(el("th", null, h));
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+
+    var order = { fail: 0, error: 1, flag: 2, pass: 3 };
+    var tbody = el("tbody");
+    rows.slice().sort(function (a, b) { return order[a.verdict] - order[b.verdict]; })
+        .forEach(function (r) {
+      var tr = el("tr", r.verdict === "fail" ? "is-fail" : (r.verdict === "flag" ? "is-flag" : ""));
+      tr.appendChild(el("td", null, r.cola_id));
+      tr.appendChild(el("td", "results__verdict results__verdict--" + r.verdict,
+                        VERDICT_LABEL[r.verdict] || r.verdict));
+      tr.appendChild(el("td", null, findingsOf(r)));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    resultsBox.appendChild(table);
+  }
+
+  var VERDICT_LABEL = { pass: "Pass", flag: "Review", fail: "Fail", error: "Not checked" };
+
+  var FIELD_NAMES = {
+    brand_name: "brand name", class_type: "class/type", alcohol_content: "alcohol content",
+    proof_consistency: "proof statement", net_contents: "net contents",
+    bottler_name: "bottler", bottler_address: "bottler address",
+    country_of_origin: "country of origin", government_warning: "government warning",
+    warning_typography: "warning legibility"
+  };
+
+  function findingsOf(r) {
+    if (r.error) return r.error;
+    var bad = (r.checks || []).filter(function (c) { return c.verdict !== "pass"; });
+    if (!bad.length) return "All checks passed";
+    return bad.map(function (c) {
+      return (FIELD_NAMES[c.field] || c.field) + (c.verdict === "fail" ? " (fail)" : " (review)");
+    }).join(", ");
+  }
+
+  function downloadCsv(rows) {
+    var head = ["cola_id", "verdict", "elapsed_ms", "findings"];
+    var lines = [head.join(",")];
+    rows.forEach(function (r) {
+      lines.push([r.cola_id, r.verdict, r.elapsed_ms || "", findingsOf(r)]
+        .map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; })
+        .join(","));
+    });
+    var blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "label-review-results.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  runButton.addEventListener("click", async function () {
+    resultsBox.innerHTML = "";
+    if (!recordsInput.files.length) { note("Choose a records file first.", "error"); return; }
+    if (!imagesInput.files.length) { note("Choose the label images to check.", "error"); return; }
+
+    runButton.disabled = true;
+    note("Reading application records…");
+
+    var body = new FormData();
+    body.append("records", recordsInput.files[0]);
+
+    var parsed;
+    try {
+      var response = await fetch("/api/batch/records", { method: "POST", body: body });
+      parsed = await response.json();
+      if (!response.ok) {
+        note(parsed.detail || "Could not read that records file.", "error");
+        runButton.disabled = false;
+        return;
+      }
+    } catch (err) {
+      note("Could not reach the server.", "error");
+      runButton.disabled = false;
+      return;
+    }
+
+    var matched = matchImages(parsed.records, parsed.images || {}, imagesInput.files);
+    var work = parsed.records
+      .filter(function (r) { return matched.byId[r.cola_id]; })
+      .map(function (r) { return { record: r, file: matched.byId[r.cola_id] }; });
+
+    var problems = [];
+    if (parsed.errors && parsed.errors.length) problems = problems.concat(parsed.errors);
+    var missing = parsed.records.length - work.length;
+    if (missing > 0) problems.push(missing + " record(s) had no matching image file.");
+    if (matched.unmatched.length) {
+      problems.push(matched.unmatched.length +
+        " image(s) matched no COLA ID: " + matched.unmatched.slice(0, 5).join(", ") +
+        (matched.unmatched.length > 5 ? "…" : ""));
+    }
+
+    if (!work.length) {
+      note("No images could be matched to a record. Image file names need to contain "
+           + "the COLA ID, or the records file needs an image column.", "error");
+      runButton.disabled = false;
+      return;
+    }
+
+    statusBox.innerHTML = "";
+    var progressWrap = el("div", "progress");
+    var bar = el("div", "progress__bar");
+    progressWrap.appendChild(bar);
+    var label = el("p", "filename", "Checking 0 of " + work.length + "…");
+    statusBox.appendChild(progressWrap);
+    statusBox.appendChild(label);
+
+    var started = performance.now();
+    var rows = await runPool(work, function (item) {
+      return reviewOne(item.record, item.file);
+    }, function (done, total) {
+      bar.style.width = (100 * done / total) + "%";
+      label.textContent = "Checking " + done + " of " + total + "…";
+    });
+    var elapsed = performance.now() - started;
+
+    label.textContent = "Finished " + work.length + " labels in "
+                        + (elapsed / 1000).toFixed(1) + " s.";
+    if (problems.length) {
+      var warn = el("div", "alert alert--warn");
+      warn.setAttribute("role", "status");
+      warn.appendChild(el("strong", null, "Some items were skipped. "));
+      warn.appendChild(document.createTextNode(problems.join(" ")));
+      statusBox.appendChild(warn);
+    }
+
+    renderResults(rows, elapsed);
+    runButton.disabled = false;
+  });
+})();

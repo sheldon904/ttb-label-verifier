@@ -21,6 +21,7 @@ from app.extract.factory import build_extractor
 from app.extract.stub import StubExtractionMissing
 from app.models import ApplicationRecord
 from app.pipeline import ObservationCache, review_label
+from app.records import parse_records
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
@@ -152,3 +153,27 @@ async def api_review(
 async def api_review_example(example_id: str):
     ex = load_example(example_id)
     return await _run(ex["image_path"].read_bytes(), ApplicationRecord(**ex["record"]))
+
+
+@app.post("/api/batch/records")
+async def api_batch_records(records: UploadFile):
+    """Parse a CSV or JSON export into application records.
+
+    Returns per-row errors alongside whatever parsed successfully, so a typo in
+    one row does not cost an agent the rest of the batch.
+    """
+    raw = await records.read()
+    if len(raw) > settings.max_upload_bytes:
+        raise HTTPException(413, "That records file is too large.")
+
+    parsed = parse_records(raw, records.filename or "")
+    if not parsed.ok:
+        raise HTTPException(
+            400,
+            parsed.errors[0] if parsed.errors else "No application records were found in that file.",
+        )
+    return JSONResponse({
+        "records": [r.model_dump() for r in parsed.records],
+        "images": parsed.images,
+        "errors": parsed.errors,
+    })

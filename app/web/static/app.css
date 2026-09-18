@@ -168,3 +168,47 @@ footer { max-width: 1180px; margin: 0 auto; padding: 0 1.5rem 3rem;
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+
+/* --- batch ------------------------------------------------------------ */
+
+.modes { display: flex; gap: .4rem; margin-bottom: 1.4rem; }
+.mode {
+  font: inherit; font-weight: 700; cursor: pointer;
+  padding: .6rem 1.3rem; border-radius: var(--radius);
+  background: transparent; color: var(--primary);
+  border: 2px solid var(--primary);
+}
+.mode.is-active { background: var(--primary); color: #fff; }
+.mode:hover:not(.is-active) { background: #e6f1f8; }
+
+input[type="file"] { font: inherit; width: 100%; padding: .45rem 0; }
+
+.progress {
+  height: 1.1rem; background: #e6e6e6; border-radius: 999px;
+  overflow: hidden; margin: .7rem 0 .4rem;
+}
+.progress__bar { height: 100%; background: var(--primary); width: 0; transition: width .2s; }
+
+.summary { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0; }
+.pill {
+  padding: .3rem .8rem; border-radius: 999px; font-weight: 700; font-size: .92rem;
+}
+.pill--pass { background: var(--success-bg); color: #0a5c13; }
+.pill--flag { background: var(--warn-bg);    color: #6b4f20; }
+.pill--fail { background: var(--error-bg);   color: #8b0707; }
+.pill--none { background: #e6e6e6; color: var(--ink-muted); }
+
+.results { width: 100%; border-collapse: collapse; margin-top: .6rem; font-size: .95rem; }
+.results th, .results td {
+  text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.results th { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em;
+              color: var(--ink-muted); }
+.results tbody tr.is-fail { background: #fdf4f2; }
+.results tbody tr.is-flag { background: #fdfaf0; }
+.results__verdict { font-weight: 700; white-space: nowrap; }
+.results__verdict--pass { color: #0a5c13; }
+.results__verdict--flag { color: #6b4f20; }
+.results__verdict--fail { color: #8b0707; }

@@ -7,6 +7,7 @@ measured here -- across the whole user-visible operation, not just the API call
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 
@@ -58,7 +59,7 @@ async def review_label(
 ) -> ReviewBundle:
     started = time.perf_counter()
 
-    prepared = prepare_for_ocr(raw)
+    prepared = await asyncio.to_thread(prepare_for_ocr, raw)
 
     cached = cache.get(prepared.sha256) if cache else None
     if cached is not None:

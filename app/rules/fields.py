@@ -312,7 +312,7 @@ _DOMESTIC = re.compile(r"\b(united states|u\.?s\.?a?\.?|america)\b", re.IGNORECA
 # a Scotch declared as Canadian. Only the country itself is compared.
 _ORIGIN_BOILERPLATE = re.compile(
     r"^\s*(?:product|produce|produced|bottled|distilled|made|imported)\s+"
-    r"(?:of|in|by|from)\s+(?:the\s+)?",
+    r"(?:of|in|by|from)\s*(?:the\s+)?",
     re.IGNORECASE,
 )
 
@@ -358,8 +358,22 @@ def check_country_of_origin(expected: str | None, observed: str | None) -> Check
             citation=citation,
         )
 
+    # A declaration whose country did not survive the read ("Product of" with
+    # nothing after it) is an incomplete transcription, not a wrong country.
+    # Blur truncated exactly this on the fixture set, and rejecting on it would
+    # have told an importer their country statement was wrong when it was right.
+    observed_country = country_name(observed)
+    if not observed_country:
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.FLAG, expected=expected,
+            observed=observed,
+            reason="The country of origin statement was found but the country itself "
+                   "could not be read. Confirm against the artwork.",
+            citation=citation,
+        )
+
     score = fuzz.token_set_ratio(normalize_brand(country_name(expected)),
-                                 normalize_brand(country_name(observed)))
+                                 normalize_brand(observed_country))
     if score >= 80.0:
         return CheckResult(
             field="country_of_origin", verdict=Verdict.PASS, expected=expected,

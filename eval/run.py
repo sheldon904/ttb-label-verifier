@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -94,14 +95,17 @@ async def main_async(args) -> int:
 
     print(f"Evaluating {len(fixtures)} fixtures via {extractor.name} "
           f"(concurrency {args.concurrency})...\n")
+    started = time.perf_counter()
     outcomes = await asyncio.gather(*(run_one(f, extractor, settings, sem) for f in fixtures))
+    wall_clock = time.perf_counter() - started
 
     for o in outcomes:
         mark = "ok  " if o.verdict_correct else "MISS"
         print(f"  {mark} {o.id:<28} {o.expected:>4} -> {o.actual:<5} {o.total_ms:>6} ms"
               + (f"  {o.error}" if o.error else ""))
 
-    summary = EvalSummary(model=getattr(extractor, "name", "unknown"), outcomes=list(outcomes))
+    summary = EvalSummary(model=getattr(extractor, "name", "unknown"), outcomes=list(outcomes),
+                          concurrency=args.concurrency, wall_clock_s=wall_clock)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = render(summary)
@@ -110,8 +114,11 @@ async def main_async(args) -> int:
     (OUT_DIR / "report.md").write_text(report, encoding="utf-8")
 
     print(f"\n{summary.accuracy:.1%} verdict accuracy over {summary.n} fixtures")
-    print(f"p50 {summary.pct(50)} ms · p95 {summary.pct(95)} ms "
-          f"(budget 5000 ms: {'MET' if summary.pct(95) < 5000 else 'MISSED'})")
+    print(f"p50 {summary.pct(50)} ms · p95 {summary.pct(95)} ms"
+          + (f" (interactive budget 5000 ms: {'MET' if summary.pct(95) < 5000 else 'MISSED'})"
+             if args.concurrency == 1 else " (under load)"))
+    print(f"throughput {summary.throughput_per_min:.0f} labels/min "
+          f"-> a 300-label batch in ~{300 / max(summary.throughput_per_min, 1e-9):.1f} min")
     print(f"report -> {OUT_DIR / f'report-{name}.md'}")
 
     return 0 if summary.accuracy >= args.min_accuracy else 2

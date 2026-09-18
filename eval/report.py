@@ -55,6 +55,14 @@ class FixtureOutcome:
 class EvalSummary:
     model: str
     outcomes: list[FixtureOutcome] = field(default_factory=list)
+    concurrency: int = 1
+    wall_clock_s: float = 0.0
+
+    @property
+    def throughput_per_min(self) -> float:
+        if not self.wall_clock_s:
+            return 0.0
+        return self.n / self.wall_clock_s * 60.0
 
     @property
     def n(self) -> int:
@@ -131,14 +139,24 @@ def render(summary: EvalSummary) -> str:
     a(f"| **Wrong in a way that harms someone** | **{len(summary.unsafe_misses)}** |")
     a("")
 
-    a("## Latency\n")
-    a("Wall clock for the full operation: preprocessing, extraction and rule evaluation.\n")
+    a("## Latency and throughput\n")
+    a("These are two different numbers and conflating them is misleading. Sarah "
+      "Chen's five second budget is about an agent waiting on **one** label, so it "
+      "must be measured without contention. Batch is a throughput question: under "
+      "load, per-label wall clock rises while labels per minute improves.\n")
+    a(f"Measured at concurrency **{summary.concurrency}** "
+      f"({'interactive' if summary.concurrency == 1 else 'under load'}).\n")
     a("| p50 | p95 | p99 | max |")
     a("|---|---|---|---|")
     a(f"| {summary.pct(50)} ms | {summary.pct(95)} ms | {summary.pct(99)} ms | "
       f"{summary.pct(100)} ms |\n")
-    budget = "MET" if summary.pct(95) < 5000 else "MISSED"
-    a(f"Target is < 5 000 ms (Sarah Chen). **p95 {budget}.**\n")
+    if summary.concurrency == 1:
+        budget = "MET" if summary.pct(95) < 5000 else "MISSED"
+        a(f"Interactive target is < 5 000 ms. **p95 {budget}.**\n")
+    if summary.wall_clock_s:
+        a(f"Throughput: **{summary.throughput_per_min:.0f} labels/min** "
+          f"({summary.n} in {summary.wall_clock_s:.1f}s). A 300-label batch would take "
+          f"about **{300 / max(summary.throughput_per_min, 1e-9):.1f} minutes**.\n")
 
     a("## Verdict confusion matrix\n")
     m = summary.confusion()

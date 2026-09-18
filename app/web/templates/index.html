@@ -19,7 +19,16 @@
      is checked and the result is shown as a checklist.</p>
 
 
-  <div class="layout">
+  <div class="modes" role="group" aria-label="Review mode">
+    <button type="button" class="mode is-active" id="mode-single" aria-pressed="true">
+      One label
+    </button>
+    <button type="button" class="mode" id="mode-batch" aria-pressed="false">
+      Many labels
+    </button>
+  </div>
+
+  <div class="layout" id="panel-single">
     <section class="panel" aria-labelledby="form-heading">
       <h2 id="form-heading">Application details</h2>
 
@@ -110,6 +119,31 @@
       <div id="result">
         <p class="placeholder">Results will appear here once a label is checked.</p>
       </div>
+    </section>
+  </div>
+  <div id="panel-batch" hidden>
+    <section class="panel">
+      <h2>Review a batch</h2>
+      <p class="lede">Upload the label artwork and one file of application records.
+         Images are matched to records by COLA ID in the file name.</p>
+
+      <div class="field">
+        <label for="batch-records">Application records</label>
+        <input id="batch-records" type="file" accept=".csv,.json,text/csv,application/json">
+        <p class="dropzone__hint">CSV or JSON. Needs at least a COLA ID and a brand name
+           per row; column names are matched flexibly.</p>
+      </div>
+
+      <div class="field">
+        <label for="batch-images">Label artwork</label>
+        <input id="batch-images" type="file" multiple
+               accept="image/jpeg,image/png,image/webp,image/tiff">
+      </div>
+
+      <button type="button" class="btn btn--primary" id="batch-run">Check this batch</button>
+
+      <div id="batch-status" aria-live="polite"></div>
+      <div id="batch-results"></div>
     </section>
   </div>
 </main>

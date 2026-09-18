@@ -8,6 +8,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .DS_Store
-eval/out/
+# the evaluation report is committed as evidence of the measured claims
+eval/out/report-*.md.bak
 # fixture PNGs are committed on purpose -- the eval set must be
 # reproducible without the system fonts used to render them

@@ -14,6 +14,7 @@ Reports observations only. Verdicts are the rule engine's job.
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import numpy as np
@@ -170,6 +171,18 @@ class OcrExtractor:
     # --- interface -------------------------------------------------------
 
     async def extract_raw(self, raw: bytes, prepared: PreparedImage) -> tuple[dict, dict]:
+        """Run the blocking pipeline on a worker thread.
+
+        Everything below is CPU and subprocess work. Awaiting it directly on the
+        event loop made `async` decorative: measured on the fixture set, eight
+        labels took 12.9s at concurrency 1, 4 and 8 alike -- the semaphore was
+        limiting work that was already serial. Tesseract runs as a subprocess so
+        the GIL is released while it works, and a thread pool gives real
+        parallelism. It also keeps a long batch from freezing the UI.
+        """
+        return await asyncio.to_thread(self._extract_sync, prepared)
+
+    def _extract_sync(self, prepared: PreparedImage) -> tuple[dict, dict]:
         started = time.perf_counter()
         image = prepared.image
 

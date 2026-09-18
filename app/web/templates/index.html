@@ -18,12 +18,6 @@
   <p class="lede">Upload label artwork and the application details. Every required field
      is checked and the result is shown as a checklist.</p>
 
-  {% if not vlm_ready %}
-  <div class="alert alert--warn" role="status">
-    <strong>Extraction is not configured.</strong> Set <code>ANTHROPIC_API_KEY</code> in
-    <code>.env</code>, or run with <code>LABEL_EXTRACTOR=stub</code> to use the sample labels below.
-  </div>
-  {% endif %}
 
   <div class="layout">
     <section class="panel" aria-labelledby="form-heading">

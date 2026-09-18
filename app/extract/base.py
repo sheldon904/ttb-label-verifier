@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from app.extract.preprocess import PreparedImage
+from app.extract.imageprep import PreparedImage
 from app.models import LabelExtraction
 
 
@@ -60,5 +60,15 @@ def to_extraction(observations: dict) -> LabelExtraction:
         # punctuation -- only surrounding whitespace. Case is substantive here.
         warning_text=_clean(observations.get("warning_text")),
         warning_prefix_is_bold=bold if isinstance(bold, bool) else None,
+        warning_legibility=(
+            observations.get("warning_legibility")
+            if observations.get("warning_legibility") in ("read", "illegible", "absent")
+            else ("read" if _clean(observations.get("warning_text")) else "absent")
+        ),
         notes=[str(n) for n in notes if str(n).strip()],
+        field_confidence={
+            str(k): float(v)
+            for k, v in (observations.get("field_confidence") or {}).items()
+            if isinstance(v, (int, float))
+        },
     )

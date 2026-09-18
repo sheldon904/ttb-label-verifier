@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from app.config import REPO_ROOT
-from app.extract.preprocess import PreparedImage
+from app.extract.imageprep import PreparedImage
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
 
@@ -44,6 +44,7 @@ class StubExtractor:
                 "No recorded observations for this image. The stub extractor only serves "
                 "generated fixtures -- run `make fixtures`, or set LABEL_EXTRACTOR=vlm."
             )
-        telemetry = {"model": "stub", "elapsed_ms": 0, "input_tokens": 0,
-                     "output_tokens": 0, "image_bytes": prepared.final_bytes}
+        telemetry = {"engine": "stub", "elapsed_ms": 0,
+                     "deskew_deg": prepared.deskew_deg,
+                     "upscale_factor": prepared.upscale_factor}
         return self._index[digest], telemetry

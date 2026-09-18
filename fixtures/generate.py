@@ -54,6 +54,10 @@ def truth_observations(fx: Fixture) -> dict:
         "country_of_origin": s.country_of_origin,
         "warning_text": s.warning_text,
         "warning_prefix_is_bold": fx.truth_bold,
+        # Ground truth is what is physically on the artwork. A perfect reader
+        # would read every warning that is present; where OCR cannot, the
+        # evaluation is supposed to show that as a miss.
+        "warning_legibility": "read" if s.warning_text else "absent",
         "legibility_notes": notes,
     }
 

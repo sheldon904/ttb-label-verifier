@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import REPO_ROOT, load_settings
-from app.extract.preprocess import UnreadableImageError
+from app.extract.imageprep import UnreadableImageError
 from app.extract.factory import build_extractor
 from app.extract.stub import StubExtractionMissing
 from app.models import ApplicationRecord
@@ -59,7 +59,7 @@ def load_example(example_id: str) -> dict:
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"ok": True, "extractor": settings.extractor, "model": settings.vlm_model}
+    return {"ok": True, "extractor": settings.extractor}
 
 
 @app.get("/")
@@ -74,7 +74,6 @@ async def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "examples": examples,
         "extractor": settings.extractor,
-        "vlm_ready": settings.vlm_available or settings.extractor != "vlm",
     })
 
 
@@ -86,8 +85,7 @@ async def example_image(example_id: str):
 
 async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
     try:
-        bundle = await review_label(raw, record, get_extractor(),
-                                    max_edge=settings.max_image_edge_px, cache=cache)
+        bundle = await review_label(raw, record, get_extractor(), cache=cache)
     except UnreadableImageError as exc:
         raise HTTPException(400, str(exc)) from exc
     except StubExtractionMissing as exc:
@@ -105,8 +103,9 @@ async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
         "notes": bundle.extraction.notes,
         "image": {
             "original": list(bundle.prepared.original_size),
-            "sent": list(bundle.prepared.final_size),
-            "reduction_pct": round(bundle.prepared.reduction_pct, 1),
+            "processed": list(bundle.prepared.final_size),
+            "deskew_deg": bundle.prepared.deskew_deg,
+            "upscale_factor": bundle.prepared.upscale_factor,
         },
         "cache_hit": bundle.telemetry.get("cache_hit", False),
     })

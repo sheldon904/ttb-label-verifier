@@ -56,8 +56,7 @@ async def run_one(fx: dict, extractor, settings, sem: asyncio.Semaphore) -> Fixt
         raw = fx["_image"].read_bytes()
         record = ApplicationRecord(**fx["record"])
         try:
-            bundle = await review_label(raw, record, extractor,
-                                        max_edge=settings.max_image_edge_px)
+            bundle = await review_label(raw, record, extractor)
         except Exception as exc:  # noqa: BLE001 - the report records the failure
             return FixtureOutcome(
                 id=fx["id"], description=fx["description"], expected=fx["expected_verdict"],
@@ -84,8 +83,6 @@ async def main_async(args) -> int:
     settings = load_settings()
     if args.extractor:
         settings = replace(settings, extractor=args.extractor)
-    if args.model:
-        settings = replace(settings, vlm_model=args.model)
 
     fixtures = load_fixtures()
     if not fixtures:
@@ -105,7 +102,6 @@ async def main_async(args) -> int:
               + (f"  {o.error}" if o.error else ""))
 
     summary = EvalSummary(model=getattr(extractor, "name", "unknown"), outcomes=list(outcomes))
-    summary.model = settings.vlm_model if settings.extractor == "vlm" else extractor.name
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = render(summary)
@@ -123,8 +119,7 @@ async def main_async(args) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Evaluate the label verifier against its fixture set.")
-    p.add_argument("--extractor", choices=["vlm", "stub", "ocr"])
-    p.add_argument("--model", help="Override VLM_MODEL, for a model bake-off.")
+    p.add_argument("--extractor", choices=["ocr", "stub"])
     p.add_argument("--concurrency", type=int, default=6)
     p.add_argument("--min-accuracy", type=float, default=0.90,
                    help="Exit non-zero below this. Default 0.90.")

@@ -9,6 +9,7 @@ the only thing allowed to produce a Verdict.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -64,8 +65,22 @@ class LabelExtraction(BaseModel):
         default=None,
         description="Advisory typographic observation; None when not determinable.",
     )
+    warning_legibility: Literal["read", "illegible", "absent"] = Field(
+        default="absent",
+        description=(
+            "Whether the warning was read, detected but unreadable, or genuinely "
+            "not present. The middle state exists so that a bad photograph of a "
+            "compliant label is never reported as a violation."
+        ),
+    )
 
-    confidence: dict[str, float] = Field(default_factory=dict)
+    field_confidence: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Per-field read confidence, 0-100. The rule engine refuses to reject a "
+            "label on a field it could not read reliably."
+        ),
+    )
     notes: list[str] = Field(default_factory=list)
 
 

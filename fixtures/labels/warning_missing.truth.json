@@ -21,6 +21,7 @@
     "country_of_origin": "Product of the United States",
     "warning_text": null,
     "warning_prefix_is_bold": null,
+    "warning_legibility": "absent",
     "legibility_notes": []
   },
   "expected_verdict": "fail",

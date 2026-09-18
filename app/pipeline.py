@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 
 from app.extract.base import LabelExtractor, to_extraction
-from app.extract.preprocess import PreparedImage, prepare_image
+from app.extract.imageprep import PreparedImage, prepare_for_ocr
 from app.models import ApplicationRecord, LabelExtraction, ReviewResult
 from app.rules.engine import review
 
@@ -54,18 +54,15 @@ async def review_label(
     raw: bytes,
     record: ApplicationRecord,
     extractor: LabelExtractor,
-    max_edge: int = 1600,
     cache: ObservationCache | None = None,
 ) -> ReviewBundle:
     started = time.perf_counter()
 
-    prepared = prepare_image(raw, max_edge=max_edge)
+    prepared = prepare_for_ocr(raw)
 
     cached = cache.get(prepared.sha256) if cache else None
     if cached is not None:
-        observations, telemetry = cached, {"model": "cache", "elapsed_ms": 0,
-                                           "input_tokens": 0, "output_tokens": 0,
-                                           "image_bytes": prepared.final_bytes,
+        observations, telemetry = cached, {"engine": "cache", "elapsed_ms": 0,
                                            "cache_hit": True}
     else:
         observations, telemetry = await extractor.extract_raw(raw, prepared)

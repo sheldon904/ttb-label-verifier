@@ -55,8 +55,45 @@ def word_diff(expected: str, observed: str) -> list[str]:
     return out
 
 
-def check_warning_text(observed: str | None) -> CheckResult:
+DROPOUT_SIMILARITY_FLOOR = 0.93
+
+
+def _is_dropout_only(expected: str, observed: str) -> bool:
+    """True when the observed text differs from the statute only by omission.
+
+    Deletions are consistent with an imperfect read; replacements and insertions
+    are not -- a title-case prefix or a softened phrase both show up as
+    replacements, and those stay hard failures.
+    """
+    exp_words, obs_words = expected.split(), observed.split()
+    sm = difflib.SequenceMatcher(a=exp_words, b=obs_words, autojunk=False)
+    if sm.ratio() < DROPOUT_SIMILARITY_FLOOR:
+        return False
+    return all(tag in ("equal", "delete") for tag, *_ in sm.get_opcodes())
+
+
+def check_warning_text(observed: str | None, legibility: str = "read") -> CheckResult:
+    """Compare the transcribed warning against the statute.
+
+    The `legibility` argument is the safety valve for an OCR pipeline. Tesseract
+    fails by not reading text, not by inventing it, and those two outcomes must
+    never collapse into the same verdict: a rejection says an applicant broke the
+    law, whereas an unreadable photograph says only that we need a better image.
+    """
     citation = "27 CFR 16.21"
+
+    if legibility == "illegible" and not observed:
+        return CheckResult(
+            field="government_warning",
+            verdict=Verdict.FLAG,
+            expected=STATUTORY_WARNING,
+            observed=None,
+            reason=(
+                "Small print was detected where the warning should be, but it could not "
+                "be read reliably. Review the artwork directly or request a clearer image."
+            ),
+            citation=citation,
+        )
 
     if not observed or not observed.strip():
         return CheckResult(
@@ -65,6 +102,19 @@ def check_warning_text(observed: str | None) -> CheckResult:
             expected=STATUTORY_WARNING,
             observed=None,
             reason="No government warning statement found on the label.",
+            citation=citation,
+        )
+
+    if legibility == "illegible":
+        return CheckResult(
+            field="government_warning",
+            verdict=Verdict.FLAG,
+            expected=STATUTORY_WARNING,
+            observed=normalize_whitespace(observed),
+            reason=(
+                "The warning statement was only partially legible, so it cannot be "
+                "compared to the statutory text with confidence. Agent review required."
+            ),
             citation=citation,
         )
 
@@ -90,6 +140,30 @@ def check_warning_text(observed: str | None) -> CheckResult:
             reason=(
                 "Wording is correct but capitalization deviates from the required "
                 f"form. {WARNING_PREFIX!r} must appear in capital letters."
+            ),
+            citation=citation,
+        )
+
+    # Distinguish a transcription dropout from an altered statement.
+    #
+    # Tesseract's characteristic failure is losing a word, not inventing one. A
+    # label that is missing words but substitutes none, and is otherwise a near
+    # perfect match, is far more likely to have been read imperfectly than to
+    # have been printed that way. Rejecting on that evidence would mean telling
+    # an applicant they broke the law because of a JPEG artifact, so it goes to
+    # a human instead. A genuine omission still gets caught -- by the reviewer.
+    if _is_dropout_only(STATUTORY_WARNING, obs):
+        return CheckResult(
+            field="government_warning",
+            verdict=Verdict.FLAG,
+            expected=STATUTORY_WARNING,
+            observed=obs,
+            reason=(
+                "The warning is nearly an exact match but words are missing from the "
+                "transcription, which is consistent with an imperfect read rather than "
+                "an altered statement: "
+                + "; ".join(word_diff(STATUTORY_WARNING, obs))
+                + ". Confirm against the artwork."
             ),
             citation=citation,
         )

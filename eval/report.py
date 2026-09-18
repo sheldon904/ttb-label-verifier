@@ -6,6 +6,23 @@ import statistics
 from dataclasses import dataclass, field
 
 VERDICTS = ("pass", "flag", "fail")
+SEVERITY = {"pass": 0, "flag": 1, "fail": 2}
+
+
+def classify_miss(expected: str, actual: str) -> str:
+    """Not all misses cost the same thing.
+
+    Escalating a compliant label to human review wastes an agent a minute.
+    Rejecting one tells an applicant they broke the law when they did not, and
+    letting a violation through defeats the purpose of the review. Reporting a
+    single accuracy figure hides that difference, so this splits them.
+    """
+    if expected == actual:
+        return "correct"
+    exp, act = SEVERITY.get(expected, 0), SEVERITY.get(actual, 0)
+    if act > exp:
+        return "unsafe" if actual == "fail" and expected == "pass" else "cautious"
+    return "unsafe"
 
 # Approximate published rates, USD per million tokens. VERIFY BEFORE QUOTING --
 # pricing changes and a stale number in a submission is worse than no number.
@@ -42,6 +59,16 @@ class EvalSummary:
     @property
     def n(self) -> int:
         return len(self.outcomes)
+
+    @property
+    def cautious_misses(self) -> list:
+        return [o for o in self.outcomes
+                if classify_miss(o.expected, o.actual) == "cautious"]
+
+    @property
+    def unsafe_misses(self) -> list:
+        return [o for o in self.outcomes
+                if o.error or classify_miss(o.expected, o.actual) == "unsafe"]
 
     @property
     def accuracy(self) -> float:
@@ -92,6 +119,17 @@ def render(summary: EvalSummary) -> str:
 
     a(f"# Evaluation report — `{summary.model}`\n")
     a(f"**{summary.n} fixtures · {summary.accuracy:.1%} verdict accuracy**\n")
+
+    a("## Outcome safety\n")
+    a("A single accuracy number hides the distinction that matters here: "
+      "escalating a compliant label costs an agent a minute, whereas rejecting "
+      "one tells an applicant they broke the law when they did not.\n")
+    a("| outcome | count |")
+    a("|---|---|")
+    a(f"| Correct | {sum(o.verdict_correct for o in summary.outcomes)} |")
+    a(f"| Referred to a human when not strictly needed | {len(summary.cautious_misses)} |")
+    a(f"| **Wrong in a way that harms someone** | **{len(summary.unsafe_misses)}** |")
+    a("")
 
     a("## Latency\n")
     a("Wall clock for the full operation: preprocessing, extraction and rule evaluation.\n")

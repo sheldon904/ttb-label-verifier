@@ -7,11 +7,8 @@ Government answers the constraint honestly.
 
 from __future__ import annotations
 
-from app.models import LabelExtraction
-
-
 class OcrExtractor:
     name = "ocr"
 
-    async def extract(self, image_bytes: bytes) -> LabelExtraction:
+    async def extract_raw(self, raw: bytes, prepared) -> tuple[dict, dict]:
         raise NotImplementedError("Local OCR path -- see README > Deployment constraints.")

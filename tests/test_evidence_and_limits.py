@@ -244,7 +244,8 @@ def test_oversized_batch_is_refused(client):
 def test_second_opinion_setting_needs_a_key():
     from app.assist.second_opinion import build_reader
     from app.config import load_settings
-    s = replace(load_settings(), second_opinion="anthropic", anthropic_api_key=None)
+    s = replace(load_settings(), second_opinion="anthropic", anthropic_api_key=None,
+                openrouter_api_key=None, second_opinion_model="")
     assert build_reader(s) is None
     assert build_reader(replace(s, anthropic_api_key="k")).name == "claude-sonnet-5"
 

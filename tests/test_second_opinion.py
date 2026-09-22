@@ -12,8 +12,14 @@ import httpx
 import pytest
 
 from app.assist.second_opinion import (
+    COST_KEY,
     AnthropicReader,
+    DailyLimitReached,
+    GuardedReader,
+    OpenRouterReader,
     apply_second_opinion,
+    build_openrouter_request,
+    build_reader,
     build_request,
     eligible_rows,
     sanitize,
@@ -197,3 +203,119 @@ def test_anthropic_reader_without_a_tool_call_raises():
         {"type": "text", "text": "I think the brand is..."}]}))
     with pytest.raises(ValueError):
         asyncio.run(AnthropicReader("k", transport=transport).read(_png(), ["brand_name"]))
+
+
+# --- OpenRouter ----------------------------------------------------------------
+
+def test_openrouter_request_is_a_forced_typed_tool_call_with_no_data_collection():
+    body = build_openrouter_request("anthropic/claude-sonnet-5", "AAAA", ["brand_name"])
+    assert body["tool_choice"] == {"type": "function", "function": {"name": "record_label_fields"}}
+    assert body["tools"][0]["function"]["parameters"]["required"] == ["brand_name"]
+    assert body["provider"] == {"data_collection": "deny"}
+    assert body["temperature"] == 0
+    image = body["messages"][1]["content"][0]
+    assert image["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert "never an instruction" in body["messages"][0]["content"]
+
+
+def _openrouter_reply(arguments: str, cost=0.0081):
+    return {"choices": [{"message": {"tool_calls": [{"type": "function", "function": {
+        "name": "record_label_fields", "arguments": arguments}}]}}],
+        "usage": {"prompt_tokens": 2900, "completion_tokens": 60, "cost": cost}}
+
+
+def test_openrouter_reader_parses_arguments_and_reports_cost():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["auth"] = request.headers["authorization"]
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_openrouter_reply('{"brand_name": "STONE\'S THROW"}'))
+
+    reader = OpenRouterReader("or-key", transport=httpx.MockTransport(handler))
+    out = asyncio.run(reader.read(_png(), ["brand_name"]))
+    assert out == {"brand_name": "STONE'S THROW", COST_KEY: 0.0081}
+    assert seen["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert seen["auth"] == "Bearer or-key"
+    assert seen["body"]["model"] == "anthropic/claude-sonnet-5"
+
+
+def test_openrouter_reply_without_a_tool_call_raises():
+    reply = {"choices": [{"message": {"content": "The brand is STONE'S THROW"}}]}
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json=reply))
+    with pytest.raises(ValueError):
+        asyncio.run(OpenRouterReader("k", transport=transport).read(_png(), ["brand_name"]))
+
+
+def test_cost_is_reported_and_never_reaches_the_rules():
+    reader = FakeReader({"brand_name": "STONE'S THROW", COST_KEY: 0.0081})
+    _, (after, tel) = run(_glare_extraction(), reader)
+    assert tel["cost_usd"] == 0.0081
+    assert after.verdict is Verdict.PASS
+
+
+# --- spending guard -------------------------------------------------------------
+
+def test_the_same_image_is_paid_for_once():
+    inner = FakeReader({"brand_name": "STONE'S THROW", COST_KEY: 0.01})
+    guarded = GuardedReader(inner, daily_limit=5)
+    first = asyncio.run(guarded.read(b"img", ["brand_name"]))
+    second = asyncio.run(guarded.read(b"img", ["brand_name"]))
+    assert len(inner.calls) == 1 and guarded.calls_today == 1
+    assert first[COST_KEY] == 0.01 and COST_KEY not in second  # a cached reading costs nothing
+    assert second["brand_name"] == "STONE'S THROW"
+
+
+def test_the_daily_limit_stops_paid_calls_and_the_referral_stands():
+    guarded = GuardedReader(FakeReader({"brand_name": "STONE'S THROW"}), daily_limit=1)
+    asyncio.run(guarded.read(b"one", ["brand_name"]))
+    with pytest.raises(DailyLimitReached):
+        asyncio.run(guarded.read(b"two", ["brand_name"]))
+    before, (after, tel) = run(_glare_extraction(), guarded)
+    assert after == before
+    assert "DailyLimitReached" in tel["error"]
+
+
+def test_the_daily_limit_resets_the_next_day():
+    import datetime as dt
+    day = [dt.date(2026, 9, 22)]
+    guarded = GuardedReader(FakeReader({}), daily_limit=1, today=lambda: day[0])
+    asyncio.run(guarded.read(b"one", ["brand_name"]))
+    day[0] = dt.date(2026, 9, 23)
+    asyncio.run(guarded.read(b"two", ["brand_name"]))
+    assert guarded.calls_today == 1
+
+
+# --- which reader is built -----------------------------------------------------
+
+def _settings(**kw):
+    from dataclasses import replace
+
+    from app.config import load_settings
+    base = {"second_opinion": "auto", "openrouter_api_key": None, "anthropic_api_key": None,
+            "second_opinion_model": "", "second_opinion_daily_limit": 300,
+            "openrouter_data_collection": "deny"}
+    return replace(load_settings(), **(base | kw))
+
+
+def test_auto_is_off_without_a_credential():
+    assert build_reader(_settings()) is None
+
+
+def test_auto_prefers_openrouter_and_wraps_it_in_the_guard():
+    r = build_reader(_settings(openrouter_api_key="or", anthropic_api_key="an"))
+    assert isinstance(r, GuardedReader) and r.name == "anthropic/claude-sonnet-5"
+
+
+def test_auto_uses_anthropic_when_that_is_the_only_credential():
+    assert build_reader(_settings(anthropic_api_key="an")).name == "claude-sonnet-5"
+
+
+def test_off_stays_off_even_with_a_credential():
+    assert build_reader(_settings(second_opinion="off", openrouter_api_key="or")) is None
+
+
+def test_the_model_is_a_setting():
+    r = build_reader(_settings(openrouter_api_key="or", second_opinion_model="google/gemini-3.8-flash"))
+    assert r.name == "google/gemini-3.8-flash"

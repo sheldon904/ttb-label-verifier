@@ -35,10 +35,11 @@ SAMPLE_BATCH = REPO_ROOT / "fixtures" / "records" / "batch-sample.csv"
 # The seeded demos. A grader rarely arrives holding label images, so the tool
 # has to be able to demonstrate itself: a compliant label, the defect Jenny
 # described, a self-contradictory alcohol statement, a brand one letter off
-# (a referral, with triage), and a tilted photograph (the evidence boxes follow
-# the tilt).
+# (a referral, with triage), a tilted photograph (the evidence boxes follow
+# the tilt) and a glare-damaged photograph (a referral OCR cannot resolve,
+# which the second reading clears when it is switched on).
 EXAMPLE_IDS = ("clean_01", "warning_title_case", "proof_inconsistent", "brand_near_miss",
-               "photo_skewed")
+               "photo_skewed", "photo_glare")
 
 # Fixture ids are file stems. Anything else is not an example, whatever the
 # filesystem might make of it.
@@ -181,6 +182,7 @@ async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
         "notes": bundle.extraction.notes,
         "boxes": bundle.extraction.field_boxes,
         "triage": bundle.result.triage.model_dump() if bundle.result.triage else None,
+        "second_opinion": _second_opinion_summary(bundle.telemetry.get("second_opinion")),
         "image": {
             "original": list(bundle.prepared.original_size),
             "processed": list(bundle.prepared.final_size),
@@ -189,6 +191,18 @@ async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
         },
         "cache_hit": bundle.telemetry.get("cache_hit", False),
     })
+
+
+def _second_opinion_summary(telemetry: dict | None) -> dict | None:
+    """What the second reading did on this label, for the page. Never the cost."""
+    if not telemetry or not telemetry.get("called"):
+        return None
+    reader = get_assist()[0]
+    return {
+        "model": reader.name if reader else None,
+        "cleared": telemetry.get("cleared", []),
+        "unavailable": bool(telemetry.get("error")),
+    }
 
 
 def _parse_abv(value: str) -> float | None:

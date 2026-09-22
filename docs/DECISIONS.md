@@ -15,7 +15,7 @@ Fourteen requirements, where each came from and where it lives:
 | 2 | Sarah: **"If we can't get results back in about 5 seconds, nobody's going to use it."** | Interactive latency under 5s | Measured p95 **1.45 to 1.53 s** at concurrency 1, on three Tesseract builds: `eval/out/` |
 | 3 | Sarah: "big importers who dump 200, 300 label applications on us at once" | Batch review | `app/web/static/app.js`; **219 labels/min** with 8 workers; referrals sorted by triage |
 | 4 | Sarah: "something my mother could figure out... half our team is over 50" | Plain UI, large type, no hunting for buttons | One page, one action, 18px base, artwork beside the checklist with a box where each field was read, prints cleanly |
-| 5 | Marcus: "our network blocks outbound traffic... our firewall blocked connections to their ML endpoints" | No dependency on an external inference endpoint | Local OCR; the default makes no outbound call; both model features are optional and fail safe when blocked |
+| 5 | Marcus: "our network blocks outbound traffic... our firewall blocked connections to their ML endpoints" | No dependency on an external inference endpoint | Every verdict is local; the two model features switch on only with a credential and fail safe when blocked |
 | 6 | Marcus: "we're not looking to integrate with COLA directly" | Standalone proof of concept | No COLA client anywhere |
 | 7 | Marcus: "We're not storing anything sensitive for this exercise" | No retention | In-memory only; cache is process-local |
 | 8 | Marcus: FedRAMP, Azure, government infrastructure | Deployable inside a controlled boundary | Single container, no egress, unprivileged user: `Dockerfile` |
@@ -33,7 +33,7 @@ Three more that are in the body text rather than an interview:
 | 15 | "common elements include..." (seven bullets) | All seven mandatory elements, not the three in the worked example | Brand, class/type, alcohol, net contents, bottler name and address, country of origin, warning |
 | 16 | Sample reads `45% Alc./Vol. (90 Proof)` | Internal consistency: proof must equal 2 × ABV | `proof_consistency` |
 | 17 | Deliverables: "Deployed Application URL" | A reviewer can open it | Container image, built and checked by CI; URL in the README |
-| 18 | Title: "AI-Powered Alcohol Label Verification App" | Use AI where it helps | A vision model's second reading of referrals and Jev triage, both advisory and opt-in: decisions 9 and 10 |
+| 18 | Title: "AI-Powered Alcohol Label Verification App" | Use AI where it helps | A vision model's second reading of referrals and Jev triage, both advisory, each on when its credential is present: decisions 9 and 10 |
 
 Number 16 is not stated anywhere. The sample label is internally consistent, and a
 label can match its application perfectly while contradicting itself.
@@ -52,15 +52,15 @@ and it means a rejection can always be traced to a specific rule and a specific
 CFR section rather than to a black box. For output that can cause a federal
 rejection of an application, that traceability is the point.
 
-### 2. No machine learning model
+### 2. No model in the decision path
 
-Cost was not the deciding factor; inference for this whole exercise would have
-been a few dollars. Three things decided it:
+Every verdict comes from OCR and a rule. Cost did not decide that; three things
+did:
 
 - **Appeals.** "The sixth word of your warning statement reads X, 27 CFR 16.21
   requires Y" is a defensible basis for a rejection. A model's judgement is not.
-- **Marcus's firewall**, which killed the previous vendor's features. Nothing
-  here needs egress, a key or a vendor.
+- **Marcus's firewall**, which killed the previous vendor's features. No
+  verdict here needs egress, a credential or a vendor.
 - **Failure mode.** Tesseract fails by *losing* text; a language model fails by
   confidently producing plausible text. For a byte-exact comparison against a
   statute, losing text is by far the safer failure, because you can detect it.
@@ -136,6 +136,14 @@ manipulated reading can do: the worst case is a referral cleared that OCR could 
 read, marked on the row as a second reading for the agent to confirm. The model is
 asked for a typed tool call with a fixed schema, so free text cannot come back.
 
+The reading goes through OpenRouter: one prepaid balance, a hard credit limit on
+the key, any vision model a setting away, and routing restricted to providers that
+do not store or train on requests. Claude Sonnet 5 is the default at about a cent per
+referred label. Only referred labels are ever sent, readings are cached by image so
+a reviewer clicking the same sample twice pays once, and a daily call limit sits
+under the key's credit limit. The evaluation calls no paid model unless asked, so CI
+stays free and reproducible.
+
 ### 10. Triage sees our findings, never the label
 
 A label is artwork the applicant designed. Any text from it that reaches a model
@@ -144,9 +152,12 @@ Jev is documented to move under exactly that kind of text: injected "pre-approve
 wording moved a block probability from 0.76 to 0.48 in a published test. So the
 state sent to Jev is our own typed output: field names, verdicts, similarity
 scores, read confidence and word counts. A test pins that no label text reaches it.
-Triage only sorts referrals, it runs only when gateway credentials are set, and a local
-heuristic does the same job without one. That heuristic is the baseline: on the
-fixtures it ranks genuine referrals above read problems in 75% of pairs.
+Triage only sorts referrals. Jev is the default; without a gateway credential, or
+when a call fails, the local heuristic answers instead and the row names which one
+did. That heuristic is also the baseline: on the fixtures it ranks genuine referrals
+above read problems in 75% of pairs. The request carries no zero-data-retention
+option, which AI Gateway reserves for paid plans; there is no label content in it
+to retain.
 
 ### 11. A second artwork style, rendered the same way
 

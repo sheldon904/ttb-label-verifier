@@ -126,14 +126,21 @@ class JevTriage:
         self.name = model
 
     def build_request(self, result: ReviewResult) -> dict:
+        # No zero-data-retention option: on AI Gateway it is a paid-plan
+        # feature, and the state carries no label content to retain anyway.
         return {
             "model": self._model,
             "state": triage_state(result),
             "questions": {"genuine_defect": QUESTION},
-            "providerOptions": {"gateway": {"zeroDataRetention": True}},
         }
 
     async def score(self, result: ReviewResult) -> Triage | None:
+        """Jev's estimate, or the local heuristic's when Jev cannot answer.
+
+        A blocked network (Marcus's firewall), an expired credential or a
+        spent balance all end the same way: the queue is still ordered, and
+        the row says which estimator ordered it.
+        """
         if result.verdict is not Verdict.FLAG:
             return None
         try:
@@ -145,8 +152,8 @@ class JevTriage:
                 r.raise_for_status()
                 p = r.json()["answers"]["genuine_defect"]["probability"]
             return Triage(probability=float(p), provider=self.name)
-        except Exception:  # noqa: BLE001 - triage is advisory; a failure leaves the row unscored
-            return None
+        except Exception:  # noqa: BLE001 - triage is advisory; fall back rather than go blank
+            return await HeuristicTriage().score(result)
 
 
 def build_triage(settings) -> TriageProvider | None:

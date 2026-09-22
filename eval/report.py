@@ -49,6 +49,8 @@ class FixtureOutcome:
     triage_p: float | None = None
     cleared: list[str] = field(default_factory=list)
     wrong_fails: list[str] = field(default_factory=list)
+    second_opinion_called: bool = False
+    cost_usd: float | None = None
 
     @property
     def verdict_correct(self) -> bool:
@@ -126,9 +128,15 @@ def render_assist(summary: EvalSummary, a) -> None:
     and does triage rank genuine referrals above read problems?"""
     if summary.second_opinion:
         cleared = [o for o in summary.outcomes if o.cleared]
+        called = [o for o in summary.outcomes if o.second_opinion_called]
+        costs = [o.cost_usd for o in called if o.cost_usd is not None]
         a(f"## Second opinion (`{summary.second_opinion}`)\n")
-        a(f"Cleared {len(cleared)} referral(s). A cleared row is a PASS the agent confirms on the "
-          "artwork; a second reading can never produce a FAIL.\n")
+        a(f"Consulted on {len(called)} referred label(s); cleared rows on {len(cleared)}. A cleared "
+          "row is a PASS the agent confirms on the artwork; a second reading can never produce "
+          "a FAIL.\n")
+        if costs:
+            a(f"Cost: ${sum(costs):.4f} in total, ${sum(costs) / len(costs):.4f} per consulted "
+              "label, as reported by the provider.\n")
         if cleared:
             a("| fixture | expected | rows cleared |")
             a("|---|---|---|")

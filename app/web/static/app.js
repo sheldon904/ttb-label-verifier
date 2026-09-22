@@ -251,6 +251,15 @@
     banner.appendChild(el("span", "verdict__label", VERDICT_TEXT[data.verdict]));
     var meta = data.cola_id + " · " + (data.elapsed_ms / 1000).toFixed(1) + " s";
     if (data.cache_hit) meta += " · cached";
+    var so = data.second_opinion;
+    if (so && so.cleared && so.cleared.length) {
+      meta += " · " + so.cleared.length + " row" + (so.cleared.length > 1 ? "s" : "")
+        + " cleared by a second reading (" + so.model + ")";
+    } else if (so && so.unavailable) {
+      meta += " · second reading unavailable, referral stands";
+    } else if (so) {
+      meta += " · second reading (" + so.model + ") did not change the result";
+    }
     banner.appendChild(el("span", "verdict__meta", meta));
     result.appendChild(banner);
 

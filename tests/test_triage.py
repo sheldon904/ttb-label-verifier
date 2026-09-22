@@ -84,13 +84,16 @@ def test_jev_request_matches_the_gateway_contract():
     assert seen["auth"] == "Bearer gw-key"
     q = seen["body"]["questions"]["genuine_defect"]
     assert q["type"] == "boolean" and set(q["criteria"]) == {"true", "false"}
-    assert seen["body"]["providerOptions"]["gateway"]["zeroDataRetention"] is True
+    # Zero data retention is a paid-plan option on AI Gateway; nothing to retain anyway.
+    assert "providerOptions" not in seen["body"]
     assert "OLD TIM" not in json.dumps(seen["body"])
 
 
-def test_jev_failure_leaves_the_row_unscored():
+def test_jev_failure_falls_back_to_the_local_heuristic():
     jev = JevTriage("k", transport=httpx.MockTransport(lambda r: httpx.Response(503)))
-    assert score(jev, _ext(brand_name="OLD TIM DISTILLERY")) is None
+    t = score(jev, _ext(brand_name="OLD TIM DISTILLERY"))
+    assert t is not None and t.provider == "heuristic"
+    assert t.probability > 0.6
 
 
 def test_jev_without_a_key_falls_back_to_the_local_baseline():

@@ -5,22 +5,28 @@
 Checks alcohol beverage label artwork against the data in its COLA application and
 shows a compliance agent exactly what matched, what did not and why.
 
-**The default deployment runs no machine learning model, needs no credentials and makes
-no outbound call.** Every field is read with local OCR and every verdict comes from an
-inspectable rule with a CFR citation. Two optional model features sit downstream of
-those rules: a vision model's second reading of referred labels, and referral triage
-with TypeSafe's Jev. Both stay off until configured with credentials, and neither can
-reject a label.
+**Every verdict comes from local OCR and an inspectable rule with a CFR citation.**
+Two model features sit downstream of those rules, and neither can reject a label:
+
+- **A second reading.** When OCR cannot read part of a label and the rules refer it,
+  Claude Sonnet 5 (through OpenRouter) re-reads just those fields from the image. It can
+  clear the referral; it can never produce a rejection.
+- **Referral triage.** TypeSafe's Jev (through Vercel AI Gateway) estimates which
+  referrals in a batch are real defects, so the queue starts with them.
+
+Each switches on when its credential is present. With none, the whole app runs inside
+one container with no outbound call, which is what a locked-down network needs.
 
 > **Live prototype:** _add the deployed URL here at submission_ (see [Deployment](#deployment)).
-> Runs as a single container with no egress.
 
 ## Try it in sixty seconds
 
-1. Open the app. Under **Or try a sample label**, click any of the five samples. The
+1. Open the app. Under **Or try a sample label**, click any of the six samples. The
    artwork appears beside the checklist, with a box drawn where each field was read,
    coloured by its result. Click a checklist row to pick out its box. The tilted
-   photograph shows the boxes following the tilt.
+   photograph shows the boxes following the tilt. The glare-damaged photograph is one
+   OCR cannot fully read: watch the second reading clear it, marked on each row it
+   changed.
 2. The checklist answers two questions separately: does the label match its
    application, and does the label meet the regulation on its own terms.
 3. Click **Many labels**, then **Run the sample batch**. Thirty labels run through the
@@ -43,8 +49,8 @@ found a failure the original build never showed.
 | 5.3.4, Ubuntu 24.04 (CI) | 26 | 3 | 1 | **0** | 1.48 s |
 
 The interactive budget is 5 s. Batch throughput is 219 labels a minute with 8 workers,
-so a 300-label peak-season batch takes about a minute and a half. Cost per label is
-$0.00. Reports: [`eval/out/report.md`](eval/out/report.md) and the per-build copies
+so a 300-label peak-season batch takes about a minute and a half. A verdict costs
+nothing; a referred label that gets a second reading costs about a cent. Reports: [`eval/out/report.md`](eval/out/report.md) and the per-build copies
 beside it.
 
 A single accuracy figure would hide the distinction that matters, so the evaluation
@@ -83,20 +89,28 @@ The brief is titled "AI-Powered", and two thirds of the public submissions to it
 vision model in charge of reading. This one uses a model in the two places it helps and
 cannot hurt:
 
-- **A second reading of referred labels** (`SECOND_OPINION=anthropic`). When the rules
-  refer a label because OCR could not read part of it, Claude re-reads only those
-  fields from the image. The rules run again on the new reading, and a row is replaced
+- **A second reading of referred labels** (on when `OPENROUTER_API_KEY` is set). When
+  the rules refer a label because OCR could not read part of it, Claude Sonnet 5 re-reads
+  only those fields from the image, through OpenRouter, answering through a typed tool
+  call so free text cannot come back. The rules run again on the new reading, and a row is replaced
   only if it now passes. A second reading that disagrees changes nothing, so the worst
   a wrong or manipulated reading can do is clear a referral OCR could not read. The
   row then says where its reading came from and asks the agent to confirm it. A
-  confident disagreement, such as a brand one letter off, is never offered.
-- **Referral triage** (`TRIAGE=jev`). After a batch run, [Jev](https://vercel.com/docs/ai-gateway/modalities/evaluation)
+  confident disagreement, such as a brand one letter off, is never offered. It costs
+  about a cent per referred label, only referred labels are ever sent, and three guards
+  cap the bill: a cache so a reviewer clicking the same sample twice pays once, a daily
+  call limit, and the OpenRouter credit limit. Requests are routed only to
+  providers that do not store or train on them. Any model on OpenRouter is one setting
+  away.
+- **Referral triage** (on by default; `TRIAGE=jev`). After a batch run, [Jev](https://vercel.com/docs/ai-gateway/modalities/evaluation)
   estimates for each referral how likely it is to be a real defect rather than a read
   problem, and the queue sorts by it. Jev receives field names, verdicts, similarity
   scores and word counts. It receives no text from the label, because label text is
-  written by the applicant and anything written there would be a prompt. A local
-  heuristic does the same job with no outbound call and is the baseline Jev has to beat. On the
-  fixtures it ranks genuine referrals above read problems in 75% of pairs.
+  written by the applicant and anything written there would be a prompt. Without a
+  gateway credential, or when the call fails, a local heuristic takes over and the row
+  says so. That heuristic is also the baseline Jev has to beat: on the fixtures it ranks
+  genuine referrals above read problems in 75% of pairs. A referral costs Jev about
+  $0.00001.
 
 ### The extraction / decision split
 
@@ -228,7 +242,7 @@ these are my readings of it:
   available during development. Both are built against the providers' documented contracts and
   tested against mocked responses, including hostile ones. The evaluation reports what
   each did the first time it runs with credentials (`python -m eval.run --second-opinion
-  anthropic --triage jev`).
+  openrouter --triage jev`), including the provider-reported cost per label.
 - **Type size cannot be verified from an image.** 27 CFR 16.22(b) specifies minimums
   in millimetres; a photograph carries pixels. The applicable minimum is stated from
   the container volume on every result so the agent knows what to check.
@@ -252,7 +266,7 @@ The only system dependency is Tesseract.
 #                       (the default install path is found automatically)
 
 make install
-make test                  # 225 tests, no network
+make test                  # 239 tests, no network, no paid calls
 make eval                  # full fixture sweep, one label at a time
 make eval-throughput       # the same, 8 workers
 make dev                   # http://localhost:8000
@@ -271,11 +285,16 @@ never changes under you.
 | `RATE_LIMIT_PER_MINUTE` | 120 | Review requests per address per minute; over it, a 429 the batch page waits out |
 | `TRUST_PROXY_HEADERS` | off | Behind a host's load balancer, take the address from `X-Forwarded-For` |
 | `MAX_BATCH_LABELS` | 500 | Largest batch accepted |
-| `SECOND_OPINION` | off | `anthropic` plus `ANTHROPIC_API_KEY` turns on the second reading |
-| `SECOND_OPINION_MODEL` | `claude-sonnet-5` | Model for the second reading |
-| `TRIAGE` | heuristic | `jev` plus `AI_GATEWAY_API_KEY` uses Jev; `off` hides triage |
+| `OPENROUTER_API_KEY` | none | Turns on the second reading. Set a credit limit for it at openrouter.ai |
+| `SECOND_OPINION` | auto | `auto` is on when a credential is present; `off` disables it; `anthropic` uses `ANTHROPIC_API_KEY` directly |
+| `SECOND_OPINION_MODEL` | `anthropic/claude-sonnet-5` | Any vision model on OpenRouter |
+| `SECOND_OPINION_DAILY_LIMIT` | 300 | Paid second readings per day per instance |
+| `AI_GATEWAY_API_KEY` | none | Lets triage ask Jev; on Vercel the deployment's OIDC token also works |
+| `TRIAGE` | jev | Falls back to the local heuristic without a credential; `off` hides triage |
 
-The page footer states which of the two model features is on.
+The page footer states which of the two model features is on. The evaluation never
+calls a paid model unless asked (`--second-opinion openrouter`), so `make eval` and CI
+stay free.
 
 ### Deployment
 
@@ -286,9 +305,21 @@ docker run --rm -p 8000:8000 ttb-label-verifier
 
 The image installs Tesseract and the English model at build time, runs as an
 unprivileged user, exposes `/healthz` and makes no outbound connection at run time
-unless a model feature is switched on. Any container host works; set
-`TRUST_PROXY_HEADERS=1` when it sits behind the host's proxy. CI builds the image and
-checks it answers on every push.
+unless a model credential is supplied. CI builds the image and checks it answers on
+every push.
+
+**On Vercel**, which runs a `Dockerfile.vercel` as a function: import the repository as
+a new project, then set these environment variables and deploy.
+
+| Variable | Value |
+|---|---|
+| `OPENROUTER_API_KEY` | an OpenRouter credential with a credit limit, for the second reading |
+| `AI_GATEWAY_API_KEY` | an AI Gateway credential, for Jev (optional: the deployment's OIDC token is tried) |
+| `TRUST_PROXY_HEADERS` | `1` |
+
+`Dockerfile.vercel` is a byte-for-byte copy of `Dockerfile`, checked by a test. An idle
+deployment scales to zero after a few minutes, so the first request after a quiet
+spell starts the container. Any other container host works the same way.
 
 ## Regulatory references
 

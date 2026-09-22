@@ -99,6 +99,8 @@ async def run_one(fx: dict, extractor, sem: asyncio.Semaphore, reader=None, tria
             triage_p=bundle.result.triage.probability if bundle.result.triage else None,
             wrong_fails=wrong_fails,
             cleared=(bundle.telemetry.get("second_opinion") or {}).get("cleared", []),
+            second_opinion_called=bool((bundle.telemetry.get("second_opinion") or {}).get("called")),
+            cost_usd=(bundle.telemetry.get("second_opinion") or {}).get("cost_usd"),
         )
 
 
@@ -106,13 +108,14 @@ async def main_async(args) -> int:
     settings = load_settings()
     if args.extractor:
         settings = replace(settings, extractor=args.extractor)
-    if args.triage:
-        settings = replace(settings, triage=args.triage)
-    if args.second_opinion:
-        settings = replace(settings, second_opinion=args.second_opinion)
+    # The evaluation is offline and free unless asked otherwise: a model call
+    # costs money and makes the numbers depend on a remote service.
+    settings = replace(settings, triage=args.triage or "heuristic",
+                       second_opinion=args.second_opinion or "off")
     reader, triage = build_reader(settings), build_triage(settings)
-    if args.second_opinion == "anthropic" and reader is None:
-        print("--second-opinion anthropic needs ANTHROPIC_API_KEY.", file=sys.stderr)
+    if args.second_opinion not in (None, "off") and reader is None:
+        print(f"--second-opinion {args.second_opinion} needs OPENROUTER_API_KEY or "
+              "ANTHROPIC_API_KEY.", file=sys.stderr)
         return 1
 
     fixtures = load_fixtures()
@@ -142,8 +145,8 @@ async def main_async(args) -> int:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = render(summary)
-    name = summary.model.replace(":", "_").replace("/", "_")
-    (OUT_DIR / f"report-{name}.md").write_text(report, encoding="utf-8")
+    # One report, overwritten each run. Per-build copies kept for comparison
+    # (report-tesseract-*.md) are made by hand, so a run never adds files.
     (OUT_DIR / "report.md").write_text(report, encoding="utf-8")
 
     unsafe = len(summary.unsafe_misses)
@@ -155,7 +158,7 @@ async def main_async(args) -> int:
              if args.concurrency == 1 else " (under load)"))
     print(f"throughput {summary.throughput_per_min:.0f} labels/min "
           f"-> a 300-label batch in ~{300 / max(summary.throughput_per_min, 1e-9):.1f} min")
-    print(f"report -> {OUT_DIR / f'report-{name}.md'}")
+    print(f"report -> {OUT_DIR / 'report.md'}")
 
     if unsafe > args.max_unsafe:
         print(f"\nFAIL: {unsafe} harmful outcome(s); the limit is {args.max_unsafe}.", file=sys.stderr)
@@ -171,9 +174,10 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Evaluate the label verifier against its fixture set.")
     p.add_argument("--extractor", choices=["ocr", "stub"])
     p.add_argument("--triage", choices=["off", "heuristic", "jev"],
-                   help="Referral triage provider. Default: TRIAGE from the environment.")
-    p.add_argument("--second-opinion", choices=["off", "anthropic"],
-                   help="Second reading on referrals. Needs ANTHROPIC_API_KEY.")
+                   help="Referral triage provider. Default heuristic (local).")
+    p.add_argument("--second-opinion", choices=["off", "auto", "openrouter", "anthropic"],
+                   help="Second reading on referrals. Needs OPENROUTER_API_KEY or ANTHROPIC_API_KEY. "
+                        "Default off.")
     p.add_argument("--concurrency", type=int, default=1,
                    help="1 measures interactive latency; higher measures throughput.")
     p.add_argument("--max-unsafe", type=int, default=0,

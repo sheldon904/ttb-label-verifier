@@ -53,6 +53,20 @@ so a 300-label peak-season batch takes about a minute and a half. A verdict cost
 nothing; a referred label that gets a second reading costs about a cent. Reports: [`eval/out/report.md`](eval/out/report.md) and the per-build copies
 beside it.
 
+**With the second reading on**, the same 30 labels on Tesseract 5.4 score 30 of 30 with
+zero harmful outcomes: the three compliant photographs OCR could not read are cleared,
+and nothing else changes. Three models were compared through OpenRouter on the same
+run:
+
+| Second-reading model | Correct of 30 | Harmful | Slowest re-read label | Cost per re-read label |
+|---|---|---|---|---|
+| **Claude Sonnet 5** (default) | **30** | **0** | **4.9 s** | $0.0052 |
+| Gemini 3.8 Flash | 30 | 0 | 14.7 s | $0.0025 |
+| GPT-6 Luna | 29 | 0 | 5.8 s | $0.0002 |
+
+Only referred labels are re-read, four of the thirty here. Every other label keeps its
+1.1 s median. Reports: `eval/out/report-second-opinion-*.md`.
+
 A single accuracy figure would hide the distinction that matters, so the evaluation
 reports four outcomes:
 
@@ -238,11 +252,12 @@ these are my readings of it:
 
 ## Limitations
 
-- **The two model features have not been measured live.** No provider credentials were
-  available during development. Both are built against the providers' documented contracts and
-  tested against mocked responses, including hostile ones. The evaluation reports what
-  each did the first time it runs with credentials (`python -m eval.run --second-opinion
-  openrouter --triage jev`), including the provider-reported cost per label.
+- **A re-read label takes up to 4.9 seconds**, inside the 5-second budget with little
+  room. Showing the OCR result at once and updating the page when the second reading
+  lands would take that to about one second; it is the next change I would make.
+- **Jev has not been measured live.** No AI Gateway credential was available. It is
+  built to the documented contract and tested against mocked responses, and the local
+  heuristic answers whenever Jev cannot (`python -m eval.run --triage jev` measures it).
 - **Type size cannot be verified from an image.** 27 CFR 16.22(b) specifies minimums
   in millimetres; a photograph carries pixels. The applicable minimum is stated from
   the container volume on every result so the agent knows what to check.
@@ -266,7 +281,7 @@ The only system dependency is Tesseract.
 #                       (the default install path is found automatically)
 
 make install
-make test                  # 239 tests, no network, no paid calls
+make test                  # 240 tests, no network, no paid calls
 make eval                  # full fixture sweep, one label at a time
 make eval-throughput       # the same, 8 workers
 make dev                   # http://localhost:8000

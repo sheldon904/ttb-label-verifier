@@ -65,6 +65,14 @@ class LabelExtraction(BaseModel):
         default=None,
         description="Advisory typographic observation; None when not determinable.",
     )
+    warning_small_type: bool = Field(
+        default=False,
+        description=(
+            "The warning is set in type too small to measure from the image. That is "
+            "a type-size question under 27 CFR 16.22(b), which no reading of the text "
+            "can settle, so it stays with an agent."
+        ),
+    )
     warning_legibility: Literal["read", "illegible", "absent"] = Field(
         default="absent",
         description=(

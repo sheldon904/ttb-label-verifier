@@ -144,6 +144,13 @@ a reviewer clicking the same sample twice pays once, and a daily call limit sits
 under the key's credit limit. The evaluation calls no paid model unless asked, so CI
 stays free and reproducible.
 
+Measured on the fixture set, the second reading takes the result from 27 to 30 of 30
+with no harmful outcome, at $0.0052 per re-read label. The default model came from a
+three-way run on the same labels: Claude Sonnet 5 was the most accurate and the
+fastest (4.9 s for the slowest re-read label); Gemini 3.8 Flash matched its accuracy
+at half the price but took up to 14.7 s; GPT-6 Luna cost a twenty-fifth as much and
+missed one.
+
 ### 10. Triage sees our findings, never the label
 
 A label is artwork the applicant designed. Any text from it that reaches a model
@@ -261,6 +268,14 @@ half-read volume, and a line without letters is never a name.
 any weight, so about 0.2 of the prefix-to-body ratio was case. A bold prefix over a
 body set in capitals measured 1.20 and read as regular. Matching cases now use their
 own band, measured at 1.08 to 1.20 bold and 0.96 regular.
+
+**A perfect reading passed tiny type.** The first live run of the second reading
+cleared the label whose warning is set in about 6-point type: the model read every
+word correctly and even judged the prefix bold, so the label passed. That label is
+referred because the type is tiny, which is a 16.22(b) size question no reading can
+settle. Type too small to measure is now its own finding on the typography row, and
+it is not marked as a read problem, so a second reading cannot clear it. The
+evaluation caught this as a harmful outcome on its first run with a real model.
 
 **A blank image was rotated twelve degrees.** With nothing to measure every angle
 tied, and the search kept the first one it tried. It now starts level and moves only

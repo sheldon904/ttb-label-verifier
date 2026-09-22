@@ -61,6 +61,7 @@ def to_extraction(observations: dict) -> LabelExtraction:
         # punctuation -- only surrounding whitespace. Case is substantive here.
         warning_text=_clean(observations.get("warning_text")),
         warning_prefix_is_bold=bold if isinstance(bold, bool) else None,
+        warning_small_type=observations.get("warning_small_type") is True,
         warning_legibility=(
             observations.get("warning_legibility")
             if observations.get("warning_legibility") in ("read", "illegible", "absent")

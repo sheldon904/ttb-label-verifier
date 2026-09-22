@@ -319,3 +319,18 @@ def test_off_stays_off_even_with_a_credential():
 def test_the_model_is_a_setting():
     r = build_reader(_settings(openrouter_api_key="or", second_opinion_model="google/gemini-3.8-flash"))
     assert r.name == "google/gemini-3.8-flash"
+
+
+def test_type_too_small_to_measure_stays_with_an_agent():
+    """A model reading 6-point type perfectly does not make its size compliant."""
+    ext = LabelExtraction(brand_name="STONE'S THROW", class_type="Straight Rye Whiskey",
+                          alcohol_statement="50% Alc./Vol. (100 Proof)", net_contents="750 mL",
+                          warning_text=None, warning_legibility="illegible",
+                          warning_prefix_is_bold=None, warning_small_type=True)
+    reader = FakeReader({"warning_text": STATUTORY_WARNING, "warning_prefix_is_bold": True})
+    before, (after, tel) = run(ext, reader)
+    assert before.verdict is Verdict.FLAG
+    assert tel["cleared"] == ["government_warning"]
+    typography = next(c for c in after.checks if c.field == "warning_typography")
+    assert typography.verdict is Verdict.FLAG and not typography.read_uncertain
+    assert after.verdict is Verdict.FLAG

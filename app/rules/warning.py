@@ -257,7 +257,8 @@ def _size_note(container_ml: float | None) -> str:
 
 
 def check_warning_typography(prefix_is_bold: bool | None,
-                             container_ml: float | None = None) -> CheckResult:
+                             container_ml: float | None = None,
+                             small_type: bool = False) -> CheckResult:
     """Advisory only.
 
     27 CFR 16.22 requires the prefix in bold, the remainder not in bold, and a
@@ -268,6 +269,23 @@ def check_warning_typography(prefix_is_bold: bool | None,
     prefix, and the size minimum that applies to this container.
     """
     citation = "27 CFR 16.22"
+
+    # Jenny: people "try to get creative with the warning... burying it in tiny
+    # text". Type too small to measure is that concern, and it is about size,
+    # so it is not marked read_uncertain: a second reading of the words, however
+    # good, cannot clear it. Found when a vision model read 6-point type
+    # perfectly and the label would otherwise have passed.
+    if small_type:
+        return CheckResult(
+            field="warning_typography",
+            verdict=Verdict.FLAG,
+            reason=("The warning is set in very small type relative to the rest of the "
+                    "label, too small to judge its weight or size from the image."
+                    + _size_note(container_ml)),
+            citation="27 CFR 16.22(b)",
+            advisory=True,
+            layer="regulation",
+        )
 
     if prefix_is_bold is None:
         return CheckResult(

@@ -106,7 +106,8 @@ def review(record: ApplicationRecord, extraction: LabelExtraction,
         check_country_of_origin(record.country_of_origin, extraction.country_of_origin),
         check_warning_text(extraction.warning_text, extraction.warning_legibility),
         check_warning_typography(extraction.warning_prefix_is_bold,
-                                 container_volume_ml(record, extraction)),
+                                 container_volume_ml(record, extraction),
+                                 extraction.warning_small_type),
     ]
     checks = assign_layers(soften_unreliable_failures(checks, extraction.field_confidence))
     return ReviewResult(

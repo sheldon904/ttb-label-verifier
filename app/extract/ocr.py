@@ -355,6 +355,9 @@ class OcrExtractor:
             "warning_text": warning_text,
             "warning_prefix_is_bold": prefix_bold,
             "warning_legibility": legibility,
+            # Type this small is a size question, whoever reads the words.
+            "warning_small_type": bool(warning_block) and min(
+                ln.height for ln in warning_block) < MIN_LEGIBLE_GLYPH_PX,
             "legibility_notes": notes,
             "field_boxes": field_boxes,
             "field_confidence": {

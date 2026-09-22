@@ -24,7 +24,8 @@
     "warning_legibility": "read",
     "legibility_notes": [
       "warning statement is set in very small type"
-    ]
+    ],
+    "warning_small_type": true
   },
   "expected_verdict": "flag",
   "expected_failing_fields": [

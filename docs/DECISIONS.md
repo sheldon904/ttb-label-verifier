@@ -141,7 +141,11 @@ the key, any vision model a setting away, and routing restricted to providers th
 do not store or train on requests. Claude Sonnet 5 is the default at about a cent per
 referred label. Only referred labels are ever sent, readings are cached by image so
 a reviewer clicking the same sample twice pays once, and a daily call limit sits
-under the key's credit limit. The evaluation calls no paid model unless asked, so CI
+under the key's credit limit. The page never waits for the model: it asks for the
+label with the reading deferred, shows the OCR result in about a second, and asks
+again with the reading included only when something is worth re-reading. That second
+request is stateless, and OCR is cached by image, so it costs only the model call.
+The evaluation calls no paid model unless asked, so CI
 stays free and reproducible.
 
 Measured on the fixture set, the second reading takes the result from 27 to 30 of 30
@@ -276,6 +280,10 @@ referred because the type is tiny, which is a 16.22(b) size question no reading 
 settle. Type too small to measure is now its own finding on the typography row, and
 it is not marked as a read problem, so a second reading cannot clear it. The
 evaluation caught this as a harmful outcome on its first run with a real model.
+
+**The OCR cache never cached anything.** It was checked with `if cache:`, and an
+empty cache has a length of zero, which Python reads as false, so nothing was ever
+stored. A test written for the two-step page, which counts OCR runs, found it.
 
 **A blank image was rotated twelve degrees.** With nothing to measure every angle
 tied, and the search kept the first one it tried. It now starts level and moves only

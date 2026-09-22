@@ -252,7 +252,9 @@
     var meta = data.cola_id + " · " + (data.elapsed_ms / 1000).toFixed(1) + " s";
     if (data.cache_hit) meta += " · cached";
     var so = data.second_opinion;
-    if (so && so.cleared && so.cleared.length) {
+    if (so && so.pending) {
+      meta += " · second reading in progress";
+    } else if (so && so.cleared && so.cleared.length) {
       meta += " · " + so.cleared.length + " row" + (so.cleared.length > 1 ? "s" : "")
         + " cleared by a second reading (" + so.model + ")";
     } else if (so && so.unavailable) {
@@ -306,20 +308,59 @@
 
   /* --- requests -------------------------------------------------------- */
 
+  /* Two steps for one label. The OCR result arrives in about a second and
+     is shown at once. If some of it could not be read and a second reading is
+     switched on, the page asks for the same label again with the reading
+     included, and redraws when it lands, a few seconds later. OCR is cached
+     on the server, so the second request costs only the model call. A newer
+     check always wins: a late answer for a label no longer on screen is
+     dropped. */
+  var generation = 0;
+
   async function send(url, options) {
+    var mine = ++generation;
     setBusy(true);
     try {
-      var response = await fetch(url, options);
+      var response = await fetch(url + "?second_opinion=defer", options);
       var payload = await response.json().catch(function () { return {}; });
+      if (mine !== generation) return;
       if (!response.ok) {
         renderError(payload.detail || "The server returned an unexpected error.");
         return;
       }
       renderResult(payload);
+      if (payload.second_opinion && payload.second_opinion.pending) {
+        secondReading(url, options, mine, payload.second_opinion.model);
+      }
     } catch (err) {
-      renderError("The server could not be reached. Check your connection and try again.");
+      if (mine === generation) {
+        renderError("The server could not be reached. Check your connection and try again.");
+      }
     } finally {
-      setBusy(false);
+      if (mine === generation) setBusy(false);
+    }
+  }
+
+  async function secondReading(url, options, mine, model) {
+    var line = el("p", "pending-line");
+    line.setAttribute("role", "status");
+    line.appendChild(el("span", "spinner"));
+    line.appendChild(document.createTextNode(
+      " Checking the parts OCR could not read with a second reading (" + model + ")…"));
+    result.insertBefore(line, result.children[1] || null);
+    try {
+      var response = await fetch(url + "?second_opinion=inline", options);
+      var payload = await response.json().catch(function () { return {}; });
+      if (mine !== generation) return;
+      if (!response.ok) {
+        line.textContent = "The second reading could not be completed, so the referral stands.";
+        return;
+      }
+      renderResult(payload);
+    } catch (err) {
+      if (mine === generation) {
+        line.textContent = "The second reading could not be reached, so the referral stands.";
+      }
     }
   }
 

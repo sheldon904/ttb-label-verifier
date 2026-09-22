@@ -11,13 +11,14 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.assist.second_opinion import build_reader
+from app.assist.second_opinion import build_reader, eligible_rows
 from app.assist.triage import build_triage
 from app.config import REPO_ROOT, load_settings
 from app.extract.factory import build_extractor
@@ -159,12 +160,31 @@ async def example_batch():
     })
 
 
-async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
+# How the second reading is delivered.
+#   inline  the response waits for it (the API default, and what batch uses:
+#           a batch is about throughput, not about the first answer)
+#   defer   the response comes back as soon as OCR and the rules have run, and
+#           says whether a second reading is worth asking for; the page asks
+#           again with inline and updates in place. OCR is cached by image, so
+#           the second request costs only the model call.
+#   off     never consult the second reader on this request
+SecondOpinionMode = Literal["inline", "defer", "off"]
+
+SECOND_OPINION_QUERY = Query(
+    "inline",
+    description=("inline waits for the second reading; defer returns the OCR result at "
+                 "once and reports whether a second reading is pending; off skips it."),
+)
+
+
+async def _run(raw: bytes, record: ApplicationRecord,
+               mode: SecondOpinionMode = "inline") -> JSONResponse:
     try:
         reader, triage = get_assist()
         async with review_gate():
             bundle = await review_label(raw, record, get_extractor(), cache=cache,
-                                        second_opinion=reader, triage=triage)
+                                        second_opinion=reader if mode == "inline" else None,
+                                        triage=triage)
     except UnreadableImageError as exc:
         raise HTTPException(400, str(exc)) from exc
     except StubExtractionMissing as exc:
@@ -182,7 +202,11 @@ async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
         "notes": bundle.extraction.notes,
         "boxes": bundle.extraction.field_boxes,
         "triage": bundle.result.triage.model_dump() if bundle.result.triage else None,
-        "second_opinion": _second_opinion_summary(bundle.telemetry.get("second_opinion")),
+        "second_opinion": (
+            {"pending": True, "model": reader.name}
+            if mode == "defer" and reader is not None and eligible_rows(bundle.result)
+            else _second_opinion_summary(bundle.telemetry.get("second_opinion"))
+        ),
         "image": {
             "original": list(bundle.prepared.original_size),
             "processed": list(bundle.prepared.final_size),
@@ -227,6 +251,7 @@ async def api_review(
     bottler_name: str = Form(""),
     bottler_address: str = Form(""),
     country_of_origin: str = Form(""),
+    second_opinion: SecondOpinionMode = SECOND_OPINION_QUERY,
 ):
     raw = await image.read()
     if len(raw) > settings.max_upload_bytes:
@@ -248,13 +273,15 @@ async def api_review(
         bottler_address=bottler_address.strip() or None,
         country_of_origin=country_of_origin.strip() or None,
     )
-    return await _run(raw, record)
+    return await _run(raw, record, second_opinion)
 
 
 @app.post("/api/review/example/{example_id}")
-async def api_review_example(example_id: str):
+async def api_review_example(example_id: str,
+                             second_opinion: SecondOpinionMode = SECOND_OPINION_QUERY):
     ex = load_example(example_id)
-    return await _run(ex["image_path"].read_bytes(), ApplicationRecord(**ex["record"]))
+    return await _run(ex["image_path"].read_bytes(), ApplicationRecord(**ex["record"]),
+                      second_opinion)
 
 
 @app.post("/api/batch/records")

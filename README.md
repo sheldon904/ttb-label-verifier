@@ -65,7 +65,11 @@ run:
 | GPT-6 Luna | 29 | 0 | 5.8 s | $0.0002 |
 
 Only referred labels are re-read, four of the thirty here. Every other label keeps its
-1.1 s median. Reports: `eval/out/report-second-opinion-*.md`.
+1.1 s median. The agent never waits for the model: the checklist appears as soon as OCR
+and the rules have run, a line says a second reading is under way, and the page
+redraws when it lands. Measured in the browser on the glare sample, the first result
+arrived in 1.4 s and the cleared result about 4 s later; a repeat of the same label is
+instant because both readings are cached. Reports: `eval/out/report-second-opinion-*.md`.
 
 A single accuracy figure would hide the distinction that matters, so the evaluation
 reports four outcomes:
@@ -252,9 +256,6 @@ these are my readings of it:
 
 ## Limitations
 
-- **A re-read label takes up to 4.9 seconds**, inside the 5-second budget with little
-  room. Showing the OCR result at once and updating the page when the second reading
-  lands would take that to about one second; it is the next change I would make.
 - **Jev has not been measured live.** No AI Gateway credential was available. It is
   built to the documented contract and tested against mocked responses, and the local
   heuristic answers whenever Jev cannot (`python -m eval.run --triage jev` measures it).
@@ -281,7 +282,7 @@ The only system dependency is Tesseract.
 #                       (the default install path is found automatically)
 
 make install
-make test                  # 240 tests, no network, no paid calls
+make test                  # 245 tests, no network, no paid calls
 make eval                  # full fixture sweep, one label at a time
 make eval-throughput       # the same, 8 workers
 make dev                   # http://localhost:8000

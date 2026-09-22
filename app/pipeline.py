@@ -70,14 +70,16 @@ async def review_label(
 
     prepared = await asyncio.to_thread(prepare_for_ocr, raw)
 
-    cached = cache.get(prepared.sha256) if cache else None
+    # "is not None": an empty cache has len 0 and is falsy, which once meant
+    # nothing was ever stored and the cache never worked.
+    cached = cache.get(prepared.sha256) if cache is not None else None
     if cached is not None:
         observations, telemetry = cached, {"engine": "cache", "elapsed_ms": 0,
                                            "cache_hit": True}
     else:
         observations, telemetry = await extractor.extract_raw(raw, prepared)
         telemetry["cache_hit"] = False
-        if cache:
+        if cache is not None:
             cache.put(prepared.sha256, observations)
 
     extraction = to_extraction(observations)

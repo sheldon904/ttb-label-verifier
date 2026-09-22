@@ -29,3 +29,10 @@ cola_id,brand_name,class_type,abv,net_contents,bottler_name,bottler_address,coun
 25-007,Chateau Belle Rive,Cabernet Sauvignon,13.5,750 mL,Belle Rive Cellars,"Napa, California",Product of the United States,v2_photo_skewed.png
 25-005,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v2_title_case.png
 25-001,Chateau Belle Rive,Cabernet Sauvignon,13.5,750 mL,Belle Rive Cellars,"Napa, California",Product of the United States,v2_wine_clean.png
+26-007,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_abv_wrong.png
+26-002,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_dark_label.png
+26-006,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_dark_title_case.png
+26-005,Casa Luna,100% Blue Agave Tequila,40.0,750 mL,Harbor Imports,"New York, New York",Mexico,v3_import_agave.png
+26-003,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_large_scan.png
+26-004,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_one_line_statement.png
+26-001,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_stacked_brand.png

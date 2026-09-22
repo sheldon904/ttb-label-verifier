@@ -24,12 +24,21 @@ WARNING_PREFIX_WORDS = ("GOVERNMENT", "WARNING")
 # a bottler line) is a separate element that must not be transcribed into it.
 WARNING_END_PHRASE = "HEALTH PROBLEMS"
 
-_ABV_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|percent\b)", re.IGNORECASE)
+_ABV_RE = re.compile(r"\d+(?:[.,]\d+)?\s*(?:%|percent\b)", re.IGNORECASE)
+# Words that make a percentage an alcohol statement rather than, say,
+# "100% Blue Agave" or a mash bill.
+_ALCOHOL_WORD = re.compile(r"\b(?:alc|alcohol|vol|volume|proof|abv)\b", re.IGNORECASE)
+# Case-insensitive: labels print "1 LITER", "750 Milliliters", "70 Cl".
 _VOLUME_RE = re.compile(
-    r"\d+(?:[.,]\d+)?\s*(?:[Ff][Ll]\.?\s*[Oo][Zz]|[Ff]luid\s+[Oo]unces?|ml|mL|ML|"
-    r"millilitres?|milliliters?|cl|cL|CL|centilitres?|centiliters?|l|L|litres?|liters?)\b"
+    r"\d+(?:[.,]\d+)*\s*(?:fl\.?\s*oz|fluid\s+ounces?|pints?|quarts?|gallons?|"
+    r"millilit(?:re|er)s?|ml|centilit(?:re|er)s?|cl|lit(?:re|er)s?|l)\b",
+    re.IGNORECASE,
 )
-_COUNTRY_RE = re.compile(r"\b(?:product|produce)\s+of\b|\bimported\b", re.IGNORECASE)
+# "Imported by <importer>" names the importer, not the country, so it is not
+# a country statement.
+_COUNTRY_RE = re.compile(
+    r"\b(?:product|produce)\s+of\b|\bimported\s+from\b|\bmade\s+in\b", re.IGNORECASE)
+_PRODUCT_OF = re.compile(r"\b(?:product|produce)\s+of\b", re.IGNORECASE)
 
 
 @dataclass
@@ -87,6 +96,23 @@ def build_lines(words: list[Word]) -> list[Line]:
         ln.words.sort(key=lambda w: w.left)
     lines.sort(key=lambda ln: (ln.top, ln.words[0].left))
     return lines
+
+
+def _percent(match: re.Match) -> float:
+    return float(re.sub(r"[^\d.]", "", match.group(0).replace(",", ".")) or 0)
+
+
+def is_alcohol_statement(text: str) -> bool:
+    """A percentage that states alcohol content.
+
+    "100% Blue Agave Tequila" is a class designation. Treating every
+    percentage as a statement dropped it from the class candidates, so the
+    importer's line was read as the class and the label was rejected. A
+    percentage counts beside an alcohol word ("Alc", "Vol", "Proof"), or
+    alone when it is under 100.
+    """
+    m = _ABV_RE.search(text)
+    return bool(m) and (bool(_ALCOHOL_WORD.search(text)) or _percent(m) < 100)
 
 
 _BARE_NUMBER = re.compile(r"^\d+(?:[.,]\d+)?$")
@@ -188,7 +214,7 @@ def pick_brand_and_class(
     candidates = [
         (i, ln) for i, ln in enumerate(lines)
         if i not in exclude and ln.top < page_bottom * 0.55 and ln.text.strip()
-        and not _ABV_RE.search(ln.text) and not _VOLUME_RE.search(ln.text)
+        and not is_alcohol_statement(ln.text) and not _VOLUME_RE.search(ln.text)
     ]
     if not candidates:
         return None, None, 0.0
@@ -200,7 +226,6 @@ def pick_brand_and_class(
     after = [
         (i, ln) for i, ln in candidates
         if i > last_brand and ln.height < brand_line.height * 0.92
-        and not _ABV_RE.search(ln.text) and not _VOLUME_RE.search(ln.text)
     ]
     class_type = after[0][1].text if after else None
 
@@ -220,6 +245,30 @@ def pick_brand_and_class(
     return (brand or None,
             (class_type.strip() if class_type else None),
             dominance)
+
+
+def pick_class_continuation(lines: list[Line], exclude: set[int]) -> str | None:
+    """The line after the class/type, in case the class line is really the
+    second line of a stacked brand ("OLD TOM" over a smaller "DISTILLERY").
+
+    Extraction only reports it. Whether the brand continues onto that line is
+    decided by the rules, against the application.
+    """
+    if not lines:
+        return None
+    page_bottom = max(ln.bottom for ln in lines)
+    candidates = [
+        (i, ln) for i, ln in enumerate(lines)
+        if i not in exclude and ln.top < page_bottom * 0.55 and ln.text.strip()
+        and not is_alcohol_statement(ln.text) and not _VOLUME_RE.search(ln.text)
+    ]
+    if not candidates:
+        return None
+    brand_idx, brand_line = max(candidates, key=lambda pair: pair[1].height)
+    last_brand = max(lines.index(ln) for ln in brand_block(lines, brand_idx, exclude))
+    after = [ln for i, ln in candidates
+             if i > last_brand and ln.height < brand_line.height * 0.92]
+    return after[1].text.strip() if len(after) > 1 else None
 
 
 def brand_block(lines: list[Line], idx: int, exclude: set[int]) -> list[Line]:
@@ -261,18 +310,38 @@ def first_match(lines: list[Line], pattern: re.Pattern, exclude: set[int]) -> st
 
 def pick_alcohol_statement(lines: list[Line], exclude: set[int]) -> str | None:
     """Return the whole statement line so '(90 Proof)' survives for the
-    internal-consistency check."""
-    return first_match(lines, _ABV_RE, exclude)
+    internal-consistency check.
+
+    A percentage beside an alcohol word ("Alc", "Vol", "Proof") is the
+    statement. Only when no line has one does a bare percentage count, and
+    never 100% or more: "100% Blue Agave Tequila" is a class designation, and
+    reading it as the alcohol content rejected a compliant label.
+    """
+    candidates = [ln.text.strip() for i, ln in enumerate(lines)
+                  if i not in exclude and _ABV_RE.search(ln.text)]
+    for text in candidates:
+        if _ALCOHOL_WORD.search(text):
+            return text
+    for text in candidates:
+        if is_alcohol_statement(text):
+            return text
+    return None
 
 
 def pick_net_contents(lines: list[Line], exclude: set[int]) -> str | None:
+    """The net contents statement, from the first line that carries a volume.
+
+    A volume on the same line as the alcohol statement ("750 mL 45% Alc./Vol.")
+    is kept: dropping it reported a missing statement and rejected the label.
+    A compound statement ("1 PINT 6 FL OZ", the 27 CFR 7.70 form) is returned
+    whole, from its first quantity to its last.
+    """
     for i, ln in enumerate(lines):
         if i in exclude:
             continue
-        m = _VOLUME_RE.search(ln.text)
-        # Skip a volume that is really part of the alcohol statement line.
-        if m and not _ABV_RE.search(ln.text):
-            return m.group(0).strip()
+        found = list(_VOLUME_RE.finditer(ln.text))
+        if found:
+            return ln.text[found[0].start():found[-1].end()].strip()
     # A number standing alone where the statements are is a quantity whose
     # unit was not read. Reporting it makes the check say "could not read the
     # volume" (a referral) rather than "there is no net contents statement"
@@ -284,7 +353,8 @@ def pick_net_contents(lines: list[Line], exclude: set[int]) -> str | None:
 
 
 def pick_country(lines: list[Line], exclude: set[int]) -> str | None:
-    return first_match(lines, _COUNTRY_RE, exclude)
+    """"Product of" first; "Made in" or "Imported from" only if there is none."""
+    return first_match(lines, _PRODUCT_OF, exclude) or first_match(lines, _COUNTRY_RE, exclude)
 
 
 def pick_bottler(
@@ -306,7 +376,7 @@ def pick_bottler(
     for i, ln in enumerate(lines):
         if i in exclude:
             continue
-        if _ABV_RE.search(ln.text) or _VOLUME_RE.search(ln.text):
+        if is_alcohol_statement(ln.text) or _VOLUME_RE.search(ln.text):
             statement_end = i
 
     upper_bound = warning_start if warning_start is not None else len(lines)

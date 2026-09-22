@@ -8,7 +8,10 @@ can be shown exactly which rule fired and which regulation it came from.
 from __future__ import annotations
 
 from app.models import ApplicationRecord, CheckResult, LabelExtraction, ReviewResult, Verdict
+from app.rules.citations import Commodity, citation, commodity_of
 from app.rules.fields import (
+    BRAND_PASS_THRESHOLD,
+    brand_similarity,
     check_alcohol_content,
     check_bottler,
     check_brand_name,
@@ -65,6 +68,15 @@ def soften_unreliable_failures(
     return out
 
 
+def cite_for(checks: list[CheckResult], commodity: Commodity | None) -> list[CheckResult]:
+    """Each row's citation from the part that governs this commodity."""
+    out = []
+    for check in checks:
+        text = citation(check.field, commodity)
+        out.append(check.model_copy(update={"citation": text}) if text else check)
+    return out
+
+
 def assign_layers(checks: list[CheckResult]) -> list[CheckResult]:
     return [c.model_copy(update={"layer": "regulation" if c.field in REGULATION_FIELDS
                                  else "application"}) for c in checks]
@@ -94,12 +106,42 @@ def container_volume_ml(record: ApplicationRecord, extraction: LabelExtraction) 
     return None
 
 
+def stacked_brand(record: ApplicationRecord,
+                  extraction: LabelExtraction) -> tuple[str | None, str | None, bool]:
+    """(brand, class/type, joined) with a two-line brand put back together.
+
+    Extraction takes the largest line as the brand and the next smaller line
+    as the class. A brand stacked over two sizes ("OLD TOM" over a smaller
+    "DISTILLERY") is then split in two, and both checks fail on a compliant
+    label. When the brand line alone does not match the application and the
+    brand line plus the "class" line does, the two are one brand and the
+    line after them is the class. Decided here, against the application,
+    because extraction cannot know which it is.
+    """
+    brand, klass = extraction.brand_name, extraction.class_type
+    if brand and klass and record.brand_name:
+        joined = f"{brand} {klass}"
+        if (brand_similarity(record.brand_name, brand) < BRAND_PASS_THRESHOLD
+                <= brand_similarity(record.brand_name, joined)):
+            return joined, extraction.class_type_next, True
+    return brand, klass, False
+
+
 def review(record: ApplicationRecord, extraction: LabelExtraction,
            elapsed_ms: int | None = None) -> ReviewResult:
+    brand, klass, joined = stacked_brand(record, extraction)
+    # The application's designation first: it is typed, not read.
+    commodity = commodity_of(record.class_type, klass)
+    brand_check = check_brand_name(record.brand_name, brand)
+    if joined and brand_check.verdict is Verdict.PASS:
+        brand_check = brand_check.model_copy(update={
+            "reason": "The brand is set on two lines on the label; read together they match "
+                      "the application. " + brand_check.reason})
     checks: list[CheckResult] = [
-        check_brand_name(record.brand_name, extraction.brand_name),
-        check_class_type(record.class_type, extraction.class_type),
-        *check_alcohol_content(record.alcohol_content_pct, extraction.alcohol_statement),
+        brand_check,
+        check_class_type(record.class_type, klass, record.brand_name),
+        *check_alcohol_content(record.alcohol_content_pct, extraction.alcohol_statement,
+                               commodity),
         check_net_contents(record.net_contents, extraction.net_contents),
         *check_bottler(record.bottler_name, record.bottler_address,
                        extraction.bottler_name, extraction.bottler_address),
@@ -109,7 +151,8 @@ def review(record: ApplicationRecord, extraction: LabelExtraction,
                                  container_volume_ml(record, extraction),
                                  extraction.warning_small_type),
     ]
-    checks = assign_layers(soften_unreliable_failures(checks, extraction.field_confidence))
+    checks = assign_layers(cite_for(
+        soften_unreliable_failures(checks, extraction.field_confidence), commodity))
     return ReviewResult(
         cola_id=record.cola_id,
         verdict=aggregate(checks),

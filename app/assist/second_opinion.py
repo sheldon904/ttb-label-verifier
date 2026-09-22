@@ -348,6 +348,8 @@ class GuardedReader:
         self._calls = 0
         self._cache: OrderedDict[str, dict] = OrderedDict()
         self._size = cache_size
+        # One paid call per image, however many requests ask at the same time.
+        self._inflight: dict[str, asyncio.Task] = {}
         self.name = inner.name
 
     @property
@@ -359,12 +361,20 @@ class GuardedReader:
         if key in self._cache:
             self._cache.move_to_end(key)
             return {k: v for k, v in self._cache[key].items() if k != COST_KEY}
+        if key in self._inflight:
+            reads = await asyncio.shield(self._inflight[key])
+            return {k: v for k, v in reads.items() if k != COST_KEY}
         if self._today() != self._day:
             self._day, self._calls = self._today(), 0
         if self._calls >= self._limit:
             raise DailyLimitReached(f"The daily limit of {self._limit} second readings is reached.")
         self._calls += 1
-        reads = await self._inner.read(image, fields)
+        task = asyncio.ensure_future(self._inner.read(image, fields))
+        self._inflight[key] = task
+        try:
+            reads = await asyncio.shield(task)
+        finally:
+            self._inflight.pop(key, None)
         self._cache[key] = dict(reads)
         if len(self._cache) > self._size:
             self._cache.popitem(last=False)

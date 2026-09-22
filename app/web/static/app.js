@@ -1,13 +1,12 @@
-/* Plain ES modules-free JavaScript: no framework, no build step, no CDN.
-   The page must work on whatever browser is on a federal desktop. */
+/* Plain JavaScript: no framework, no build step, no CDN. The page must work on
+   whatever browser is on a federal desktop. Markup and components follow the
+   U.S. Web Design System (USWDS), which is served from this app. */
 
 (function () {
   "use strict";
 
   var form = document.getElementById("review-form");
-  var dropzone = document.getElementById("dropzone");
   var fileInput = document.getElementById("image");
-  var filename = document.getElementById("filename");
   var result = document.getElementById("result");
   var submit = document.getElementById("submit");
   var artwork = document.getElementById("artwork");
@@ -45,6 +44,11 @@
     warning_typography: "Warning type and size"
   };
 
+  /* Where a row's expected value comes from, when it is not the application:
+     the warning is compared with the statute, and the proof with twice the
+     label's own percentage. */
+  var EXPECTED_FROM = { government_warning: "Required", proof_consistency: "Expected" };
+
   var MARKS = { pass: "✓", flag: "⚠", fail: "✗" };
   var STATUS = { pass: "Pass", flag: "Review", fail: "Fail" };
 
@@ -61,12 +65,25 @@
     flag: "Needs agent review",
     fail: "Does not meet requirements"
   };
+  var ALERT_KIND = { pass: "success", flag: "warning", fail: "error" };
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
     if (text !== undefined && text !== null) n.textContent = text;
     return n;
+  }
+
+  /* A USWDS alert: kind is success, warning, error or info. */
+  function alertBox(kind, heading, text, slim) {
+    var box = el("div", "usa-alert usa-alert--" + kind + (slim ? " usa-alert--slim" : ""));
+    var body = el("div", "usa-alert__body");
+    if (heading) body.appendChild(el("h3", "usa-alert__heading", heading));
+    var p = el("p", "usa-alert__text");
+    if (typeof text === "string") p.textContent = text; else if (text) p.appendChild(text);
+    body.appendChild(p);
+    box.appendChild(body);
+    return box;
   }
 
   function setBusy(busy) {
@@ -80,8 +97,13 @@
 
   var previewUrl = null;
 
-  function showArtwork(src, caption) {
-    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+  /* `ownsUrl` marks a blob URL made for an uploaded file. The previous one is
+     released when a new image replaces it, never the one being shown: an
+     earlier version revoked the new URL itself and every upload previewed as a
+     broken image. */
+  function showArtwork(src, caption, ownsUrl) {
+    if (previewUrl && previewUrl !== src) URL.revokeObjectURL(previewUrl);
+    previewUrl = ownsUrl ? src : null;
     artworkImg.src = src;
     artworkCaption.textContent = caption || "";
     artwork.hidden = false;
@@ -134,52 +156,57 @@
   });
 
   function showArtworkFile(file) {
-    previewUrl = URL.createObjectURL(file);
-    showArtwork(previewUrl, file.name);
+    showArtwork(URL.createObjectURL(file), file.name, true);
   }
 
-  /* --- file selection ------------------------------------------------ */
+  /* --- file selection ------------------------------------------------
+     The USWDS file input provides the drop target, the file name and its own
+     thumbnail; the full-size preview goes beside the checklist. */
 
-  dropzone.addEventListener("click", function () { fileInput.click(); });
-  dropzone.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
-  });
-  ["dragenter", "dragover"].forEach(function (ev) {
-    dropzone.addEventListener(ev, function (e) {
-      e.preventDefault(); dropzone.classList.add("is-over");
-    });
-  });
-  ["dragleave", "drop"].forEach(function (ev) {
-    dropzone.addEventListener(ev, function (e) {
-      e.preventDefault(); dropzone.classList.remove("is-over");
-    });
-  });
-  dropzone.addEventListener("drop", function (e) {
-    if (e.dataTransfer.files.length) {
-      fileInput.files = e.dataTransfer.files;
-      showFilename();
-    }
-  });
-  fileInput.addEventListener("change", showFilename);
+  /* A sample fills in its application details, so the checklist can be read
+     against what the application says. With no file chosen, "Check this
+     label" checks the sample again against the form as it now stands: change
+     the alcohol content and the alcohol row fails. Choosing a file ends the
+     sample. */
+  var currentSample = null;
+  var FORM_FIELDS = ["cola_id", "brand_name", "class_type", "alcohol_content_pct",
+                     "net_contents", "bottler_name", "bottler_address", "country_of_origin"];
 
-  function showFilename() {
+  function fillForm(record) {
+    FORM_FIELDS.forEach(function (name) {
+      var value = record[name];
+      form.elements[name].value = value === null || value === undefined ? "" : String(value);
+    });
+  }
+
+  /* USWDS has no reset for its file input, so this undoes what it draws when
+     a file is chosen: the preview, the "Selected file" heading and the
+     hidden instructions. */
+  function clearFileInput() {
+    fileInput.value = "";
+    var wrap = fileInput.closest(".usa-file-input");
+    if (!wrap) return;
+    Array.prototype.forEach.call(
+      wrap.querySelectorAll(".usa-file-input__preview, .usa-file-input__preview-heading"),
+      function (node) { node.parentNode.removeChild(node); });
+    var instructions = wrap.querySelector(".usa-file-input__instructions");
+    if (instructions) instructions.removeAttribute("hidden");
+  }
+
+  fileInput.addEventListener("change", function () {
     if (fileInput.files.length) {
-      filename.textContent = "Selected: " + fileInput.files[0].name;
+      currentSample = null;
       showArtworkFile(fileInput.files[0]);
-    } else {
-      filename.textContent = "";
     }
-  }
+  });
 
   /* --- rendering ------------------------------------------------------ */
 
   function renderError(message) {
     result.innerHTML = "";
     printButton.hidden = true;
-    var box = el("div", "alert alert--error");
+    var box = alertBox("error", "Could not check this label", message);
     box.setAttribute("role", "alert");
-    box.appendChild(el("strong", null, "Could not check this label. "));
-    box.appendChild(document.createTextNode(message));
     result.appendChild(box);
   }
 
@@ -201,7 +228,7 @@
 
     var head = el("p", "check__name");
     head.textContent = FIELD_LABELS[check.field] || check.field;
-    var status = el("span", "check__status", STATUS[check.verdict]);
+    var status = el("span", "usa-tag check__status", STATUS[check.verdict]);
     head.appendChild(status);
     if (check.advisory) head.appendChild(el("span", "check__advisory", "advisory"));
     if (check.source === "second_opinion") {
@@ -227,7 +254,8 @@
 
     if (check.expected || check.observed) {
       var dl = el("dl", "check__values");
-      [["Application", check.expected], ["Label", check.observed]].forEach(function (pair) {
+      [[EXPECTED_FROM[check.field] || "Application", check.expected],
+       ["Label", check.observed]].forEach(function (pair) {
         if (!pair[1]) return;
         var row = el("div");
         row.appendChild(el("dt", null, pair[0] + ":"));
@@ -247,8 +275,6 @@
   function renderResult(data) {
     result.innerHTML = "";
 
-    var banner = el("div", "verdict verdict--" + data.verdict);
-    banner.appendChild(el("span", "verdict__label", VERDICT_TEXT[data.verdict]));
     var meta = data.cola_id + " · " + (data.elapsed_ms / 1000).toFixed(1) + " s";
     if (data.cache_hit) meta += " · cached";
     var so = data.second_opinion;
@@ -262,7 +288,8 @@
     } else if (so) {
       meta += " · second reading (" + so.model + ") did not change the result";
     }
-    banner.appendChild(el("span", "verdict__meta", meta));
+    var banner = alertBox(ALERT_KIND[data.verdict], VERDICT_TEXT[data.verdict], meta);
+    banner.className += " verdict verdict--" + data.verdict;
     result.appendChild(banner);
 
     if (data.verdict === "flag" && data.triage) {
@@ -329,6 +356,10 @@
         return;
       }
       renderResult(payload);
+      /* On a narrow screen the result sits below the form, out of sight. */
+      if (window.matchMedia && window.matchMedia("(max-width: 63.99em)").matches) {
+        document.getElementById("result-heading").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       if (payload.second_opinion && payload.second_opinion.pending) {
         secondReading(url, options, mine, payload.second_opinion.model);
       }
@@ -366,11 +397,17 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    if (!fileInput.files.length) {
+    if (fileInput.files.length) {
+      /* The artwork panel must show what is being checked. */
+      showArtworkFile(fileInput.files[0]);
+      send("/api/review", { method: "POST", body: new FormData(form) });
+    } else if (currentSample) {
+      var body = new FormData(form);
+      body.delete("image");
+      send("/api/review/example/" + currentSample, { method: "POST", body: body });
+    } else {
       renderError("Choose a label image before checking.");
-      return;
     }
-    send("/api/review", { method: "POST", body: new FormData(form) });
   });
 
   Array.prototype.forEach.call(
@@ -378,7 +415,10 @@
     function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-example");
-        showArtwork("/examples/" + id + "/image", btn.textContent.trim());
+        currentSample = id;
+        clearFileInput();
+        fillForm(JSON.parse(btn.getAttribute("data-record")));
+        showArtwork("/examples/" + id + "/image", "Sample: " + btn.textContent.trim());
         send("/api/review/example/" + id, { method: "POST" });
       });
     }
@@ -424,8 +464,8 @@
   }
 
   function setMode(batch) {
-    modeBatch.classList.toggle("is-active", batch);
-    modeSingle.classList.toggle("is-active", !batch);
+    modeBatch.classList.toggle("usa-button--outline", !batch);
+    modeSingle.classList.toggle("usa-button--outline", batch);
     modeBatch.setAttribute("aria-pressed", String(batch));
     modeSingle.setAttribute("aria-pressed", String(!batch));
     panelBatch.hidden = !batch;
@@ -434,11 +474,21 @@
   modeSingle.addEventListener("click", function () { setMode(false); });
   modeBatch.addEventListener("click", function () { setMode(true); });
 
+  /* A USWDS slim alert. */
+  function alertBox(kind, text) {
+    var box = el("div", "usa-alert usa-alert--slim usa-alert--" + kind + " margin-top-3");
+    var body = el("div", "usa-alert__body");
+    var p = el("p", "usa-alert__text");
+    if (typeof text === "string") p.textContent = text; else p.appendChild(text);
+    body.appendChild(p);
+    box.appendChild(body);
+    return box;
+  }
+
   function note(message, kind) {
     statusBox.innerHTML = "";
-    var box = el("div", "alert alert--" + (kind || "warn"));
+    var box = alertBox(kind === "error" ? "error" : "info", message);
     box.setAttribute("role", kind === "error" ? "alert" : "status");
-    box.appendChild(document.createTextNode(message));
     statusBox.appendChild(box);
   }
 
@@ -565,23 +615,26 @@
     [["fail", "do not meet requirements"], ["flag", "need review"],
      ["pass", "pass"], ["error", "could not be checked"]].forEach(function (pair) {
       if (!counts[pair[0]]) return;
-      summary.appendChild(el("span", "pill pill--" + (pair[0] === "error" ? "none" : pair[0]),
+      summary.appendChild(el("span", "usa-tag usa-tag--big tag--" + pair[0],
                              counts[pair[0]] + " " + pair[1]));
     });
-    summary.appendChild(el("span", "pill pill--none",
+    summary.appendChild(el("span", "usa-tag usa-tag--big tag--none",
       rows.length + " labels in " + (elapsedMs / 1000).toFixed(1) + " s"));
     resultsBox.appendChild(summary);
 
-    var exportBtn = el("button", "btn btn--link", "Download results as CSV");
+    var exportBtn = el("button", "usa-button usa-button--outline", "Download results as CSV");
     exportBtn.type = "button";
     exportBtn.addEventListener("click", function () { downloadCsv(rows); });
     resultsBox.appendChild(exportBtn);
 
-    var table = el("table", "results");
+    var table = el("table", "usa-table usa-table--borderless usa-table--stacked results width-full");
+    var HEADINGS = ["COLA ID", "Result", "Findings", "Likely cause"];
     var thead = el("thead");
     var hrow = el("tr");
-    ["COLA ID", "Result", "Findings", "Likely cause"].forEach(function (h) {
-      hrow.appendChild(el("th", null, h));
+    HEADINGS.forEach(function (h) {
+      var th = el("th", null, h);
+      th.setAttribute("scope", "col");
+      hrow.appendChild(th);
     });
     thead.appendChild(hrow);
     table.appendChild(thead);
@@ -595,13 +648,23 @@
       return triageP(b) - triageP(a);
     }).forEach(function (r) {
       var tr = el("tr", r.verdict === "fail" ? "is-fail" : (r.verdict === "flag" ? "is-flag" : ""));
-      tr.appendChild(el("td", null, r.cola_id));
-      tr.appendChild(el("td", "results__verdict results__verdict--" + r.verdict,
-                        VERDICT_LABEL[r.verdict] || r.verdict));
-      tr.appendChild(el("td", null, findingsOf(r)));
-      var cause = el("td", "results__triage");
+      /* data-label gives each cell its heading when the table stacks on a
+         narrow screen (usa-table--stacked). */
+      function cell(cls, text, i) {
+        var td = el("td", cls, text);
+        td.setAttribute("data-label", HEADINGS[i]);
+        return td;
+      }
+      var idCell = el("th", null, r.cola_id);
+      idCell.setAttribute("scope", "row");
+      idCell.setAttribute("data-label", HEADINGS[0]);
+      tr.appendChild(idCell);
+      tr.appendChild(cell("results__verdict results__verdict--" + r.verdict,
+                          VERDICT_LABEL[r.verdict] || r.verdict, 1));
+      tr.appendChild(cell(null, findingsOf(r), 2));
+      var cause = cell("results__triage", null, 3);
       if (r.verdict === "flag" && r.triage) {
-        cause.appendChild(el("span", "pill pill--" + (r.triage.probability >= 0.6 ? "fail"
+        cause.appendChild(el("span", "usa-tag tag--" + (r.triage.probability >= 0.6 ? "fail"
           : r.triage.probability <= 0.4 ? "pass" : "flag"),
           r.triage.probability >= 0.6 ? "The label" : r.triage.probability <= 0.4 ? "The image" : "Unclear"));
         cause.title = TRIAGE_TEXT(r.triage.probability) + " (" + r.triage.provider + ", "
@@ -676,7 +739,7 @@
     var progressWrap = el("div", "progress");
     var bar = el("div", "progress__bar");
     progressWrap.appendChild(bar);
-    var label = el("p", "filename", "Checking 0 of " + work.length + "…");
+    var label = el("p", "progress__label", "Checking 0 of " + work.length + "…");
     statusBox.appendChild(progressWrap);
     statusBox.appendChild(label);
 
@@ -692,10 +755,11 @@
     label.textContent = "Finished " + work.length + " labels in "
                         + (elapsed / 1000).toFixed(1) + " s.";
     if (problems.length) {
-      var warn = el("div", "alert alert--warn");
+      var text = document.createDocumentFragment();
+      text.appendChild(el("strong", null, "Some items were skipped. "));
+      text.appendChild(document.createTextNode(problems.join(" ")));
+      var warn = alertBox("warning", text);
       warn.setAttribute("role", "status");
-      warn.appendChild(el("strong", null, "Some items were skipped. "));
-      warn.appendChild(document.createTextNode(problems.join(" ")));
       statusBox.appendChild(warn);
     }
 

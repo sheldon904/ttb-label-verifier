@@ -1,0 +1,6 @@
+@uswds/uswds 3.14.0, from the npm package's dist folder.
+
+Kept: uswds.min.css, uswds.min.js, uswds-init.min.js, LICENSE.md and every file
+the stylesheet references. Each @font-face rule was rewritten to its woff2 file
+only, and only woff2 fonts are shipped. The source map comment was removed.
+Nothing else in the files was changed.

@@ -118,3 +118,31 @@ def test_an_unknown_mode_is_rejected(app_parts):
     r = client.post("/api/review?second_opinion=always", data=FORM,
                     files={"image": ("l.png", _png(), "image/png")})
     assert r.status_code == 422
+
+
+def test_a_cached_label_is_neither_prepared_nor_read_again(monkeypatch):
+    """Preparing the image only to learn its digest cost 0.7 s on every repeat
+    and on every second-reading request."""
+    import asyncio
+    import json
+    from pathlib import Path
+
+    from app import pipeline
+    from app.extract.stub import StubExtractor
+    from app.models import ApplicationRecord
+
+    prepared_calls = []
+    real = pipeline.prepare_for_ocr
+    monkeypatch.setattr(pipeline, "prepare_for_ocr",
+                        lambda raw: prepared_calls.append(1) or real(raw))
+    labels = Path(__file__).resolve().parent.parent / "fixtures" / "labels"
+    raw = (labels / "clean_01.png").read_bytes()
+    record = ApplicationRecord(**json.loads((labels / "clean_01.truth.json").read_text())["record"])
+    cache = pipeline.ObservationCache()
+
+    first = asyncio.run(pipeline.review_label(raw, record, StubExtractor(), cache=cache))
+    second = asyncio.run(pipeline.review_label(raw, record, StubExtractor(), cache=cache))
+    assert len(prepared_calls) == 1
+    assert second.telemetry["cache_hit"] and second.result.verdict == first.result.verdict
+    assert second.prepared.image is None  # the cache keeps measurements, not pixels
+    assert second.prepared.original_size == first.prepared.original_size

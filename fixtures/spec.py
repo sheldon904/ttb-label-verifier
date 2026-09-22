@@ -36,8 +36,15 @@ class LabelSpec:
     # "classic": centred sans-serif, warning last. "modern": left-aligned serif
     # with a line of small print under the warning. The second template exists
     # to find out whether the layout heuristics generalise beyond the first.
+    # "stress": the shapes an outside reviewer's own labels broke, drawn on
+    # purpose (see render_stress).
     template: str = "classic"
     footer_text: str | None = None
+    # stress template only
+    brand_split: int = 0            # words on the brand's first line; 0 is one line
+    dark: bool = False              # light type on a dark label
+    scale: int = 1                  # render at this multiple, as a high-resolution scan
+    statement_one_line: bool = False  # net contents on the alcohol statement's line
 
 
 @dataclass
@@ -123,6 +130,24 @@ BODY_CAPS_WARNING = "GOVERNMENT WARNING: " + STATUTORY_WARNING[len("GOVERNMENT W
 
 def _modern(base: dict, footer: str = "www.example-distillery.com", **overrides) -> LabelSpec:
     return LabelSpec(**{**base, **overrides}, template="modern", footer_text=footer)
+
+
+CASA_LUNA = {
+    "brand_name": "CASA LUNA",
+    "class_type": "100% Blue Agave Tequila",
+    "alcohol_statement": "40% Alc./Vol. (80 Proof)",
+    "net_contents": "750 mL",
+    "bottler_name": "Imported by Harbor Imports",
+    "bottler_address": "New York, New York",
+    "country_of_origin": "Product of Mexico",
+}
+
+# How a distillery often words it on the label; the application has the name.
+OLD_TOM_STATED = {**OLD_TOM, "bottler_name": "Distilled and bottled by Old Tom Distilling Co."}
+
+
+def _stress(base: dict, **overrides) -> LabelSpec:
+    return LabelSpec(**{**base, **overrides}, template="stress")
 
 
 def _record(cola_id: str, base: dict, **overrides) -> dict:
@@ -404,6 +429,69 @@ def build_catalog() -> list[Fixture]:
         record=_record("25-007", BELLE_RIVE),
         expected_verdict="pass",
         degradation=Degradation(rotate_deg=5.0),
+        truth_bold=True,
+    ))
+
+
+    # --- third template: what an outside reviewer's labels broke ------------
+    f.append(Fixture(
+        id="v3_stacked_brand",
+        description="Third template: brand set on two lines in two sizes",
+        spec=_stress(OLD_TOM_STATED, brand_split=2),
+        record=_record("26-001", OLD_TOM),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v3_dark_label",
+        description="Third template: light serif type on a dark label, brand on two lines",
+        spec=_stress(OLD_TOM_STATED, brand_split=2, dark=True),
+        record=_record("26-002", OLD_TOM),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v3_large_scan",
+        description="Third template: a 2700 x 3900 pixel scan",
+        spec=_stress(OLD_TOM_STATED, brand_split=2, scale=3),
+        record=_record("26-003", OLD_TOM),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v3_one_line_statement",
+        description="Third template: net contents on the same line as the alcohol statement",
+        spec=_stress(OLD_TOM_STATED, statement_one_line=True),
+        record=_record("26-004", OLD_TOM),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v3_import_agave",
+        description="Third template: imported tequila; '100% Blue Agave' is the class, not the strength",
+        spec=_stress(CASA_LUNA),
+        record=_record("26-005", CASA_LUNA, bottler_name="Harbor Imports",
+                       country_of_origin="Mexico"),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v3_dark_title_case",
+        description="Third template: dark label with a title-case warning prefix",
+        spec=_stress(OLD_TOM_STATED, brand_split=2, dark=True, warning_text=TITLE_CASE_WARNING),
+        record=_record("26-006", OLD_TOM),
+        expected_verdict="fail",
+        expected_failing_fields=["government_warning"],
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v3_abv_wrong",
+        description="Third template: stacked brand, label states 40% against 45% on the application",
+        spec=_stress(OLD_TOM_STATED, brand_split=2,
+                     alcohol_statement="40% Alc./Vol. (80 Proof)"),
+        record=_record("26-007", OLD_TOM),
+        expected_verdict="fail",
+        expected_failing_fields=["alcohol_content"],
         truth_bold=True,
     ))
 

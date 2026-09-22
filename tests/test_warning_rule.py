@@ -1,6 +1,6 @@
 """The warning rule against what 27 CFR 16.21 and 16.22 actually regulate.
 
-16.21 fixes the wording. 16.22(b) fixes the case and weight of the two prefix
+16.21 fixes the wording. 16.22(a)(2) fixes the case and weight of the two prefix
 words only. Everything else a transcription can vary -- body case, wrapping,
 hyphenation, what follows the statement -- must not become a rejection.
 """
@@ -48,7 +48,7 @@ def test_prefix_in_title_case_still_fails():
     r = check_warning_text(STATUTORY_WARNING.replace(PREFIX, "Government Warning:"))
     assert r.verdict is Verdict.FAIL
     assert "capital" in r.reason.lower()
-    assert r.citation == "27 CFR 16.22(b)"
+    assert r.citation == "27 CFR 16.22(a)(2)"
 
 
 def test_prefix_in_lower_case_fails():
@@ -86,7 +86,7 @@ def test_trailing_text_after_an_exact_statement_flags_not_fails():
     r = check_warning_text(STATUTORY_WARNING + " www.oldtomdistillery.com")
     assert r.verdict is Verdict.FLAG
     assert "www.oldtomdistillery.com" in r.reason
-    assert r.citation == "27 CFR 16.22(a)"
+    assert r.citation == "27 CFR 16.21"
 
 
 def test_trailing_text_after_a_reworded_statement_still_fails():

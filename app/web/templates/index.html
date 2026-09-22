@@ -1,193 +1,223 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Label Verification</title>
-<link rel="stylesheet" href="/static/app.css">
+<title>Label Verification Prototype</title>
+<!-- U.S. Web Design System 3.14, served from this app: no CDN, nothing fetched
+     from outside the building. -->
+<script src="/static/uswds/js/uswds-init.min.js"></script>
+<link rel="stylesheet" href="/static/uswds/css/uswds.min.css">
+<link rel="stylesheet" href="/static/app.css?v={{ asset_version }}">
 <link rel="icon" href="data:,">
 </head>
 <body>
+<a class="usa-skipnav" href="#main-content">Skip to main content</a>
 
-<header class="banner" role="banner">
-  <p><strong>Prototype.</strong> Not connected to COLA. No uploaded image or application
-     data is stored. Everything is processed in memory and discarded.</p>
+<!-- A prototype notice in place of the "official website of the United States
+     government" banner: this is not an official .gov site and must not look
+     like one. -->
+<section class="usa-site-alert usa-site-alert--info usa-site-alert--slim" aria-label="Prototype notice">
+  <div class="usa-alert">
+    <div class="usa-alert__body">
+      <p class="usa-alert__text">
+        <strong>Prototype.</strong> Not an official government website and not connected to
+        COLA. Uploaded images and application data are processed in memory and not stored.
+      </p>
+    </div>
+  </div>
+</section>
+
+<header class="usa-header usa-header--basic">
+  <div class="usa-nav-container">
+    <div class="usa-navbar">
+      <div class="usa-logo">
+        <em class="usa-logo__text"><a href="/" title="Label Verification Prototype">Label Verification Prototype</a></em>
+      </div>
+    </div>
+  </div>
 </header>
 
-<main id="main">
-  <h1>Label Verification</h1>
-  <p class="lede">Upload label artwork and the application details. Every required field
-     is checked and the result is shown as a checklist.</p>
+<main id="main-content">
+  <div class="grid-container padding-bottom-6">
+    <h1 class="margin-top-4 margin-bottom-1">Label Verification</h1>
+    <p class="usa-intro margin-top-0">Upload label artwork and the application details. Every
+      required element is checked and the result is shown as a checklist, with the
+      regulation behind each finding.</p>
 
+    <ul class="usa-button-group usa-button-group--segmented margin-y-3" aria-label="Review mode">
+      <li class="usa-button-group__item">
+        <button type="button" class="usa-button" id="mode-single" aria-pressed="true">One label</button>
+      </li>
+      <li class="usa-button-group__item">
+        <button type="button" class="usa-button usa-button--outline" id="mode-batch" aria-pressed="false">Many labels</button>
+      </li>
+    </ul>
 
-  <div class="modes" role="group" aria-label="Review mode">
-    <button type="button" class="mode is-active" id="mode-single" aria-pressed="true">
-      One label
-    </button>
-    <button type="button" class="mode" id="mode-batch" aria-pressed="false">
-      Many labels
-    </button>
-  </div>
+    <div class="grid-row grid-gap-lg" id="panel-single">
+      <div class="desktop:grid-col-5">
+      <section class="panel" aria-labelledby="form-heading">
+        <h2 id="form-heading" class="margin-top-0">Application details</h2>
 
-  <div class="layout" id="panel-single">
-    <section class="panel" aria-labelledby="form-heading">
-      <h2 id="form-heading">Application details</h2>
+        <form id="review-form" class="usa-form maxw-full">
+          <label class="usa-label" for="cola_id">COLA ID</label>
+          <input class="usa-input" id="cola_id" name="cola_id" type="text" required autocomplete="off">
 
-      <form id="review-form">
-        <div class="field">
-          <label for="cola_id">COLA ID</label>
-          <input id="cola_id" name="cola_id" type="text" required autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="brand_name">Brand name</label>
-          <input id="brand_name" name="brand_name" type="text" required autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="class_type">Class / type <span class="optional">(optional)</span></label>
-          <input id="class_type" name="class_type" type="text" autocomplete="off">
-        </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="alcohol_content_pct">Alcohol content</label>
-            <div class="suffixed">
-              <input id="alcohol_content_pct" name="alcohol_content_pct" type="text"
-                     inputmode="decimal" autocomplete="off">
-              <span aria-hidden="true">% Alc./Vol.</span>
+          <label class="usa-label" for="brand_name">Brand name</label>
+          <input class="usa-input" id="brand_name" name="brand_name" type="text" required autocomplete="off">
+
+          <label class="usa-label" for="class_type">Class / type <span class="usa-hint">(optional)</span></label>
+          <input class="usa-input" id="class_type" name="class_type" type="text" autocomplete="off">
+
+          <div class="grid-row grid-gap-2">
+            <div class="mobile-lg:grid-col-6">
+              <label class="usa-label" for="alcohol_content_pct">Alcohol content</label>
+              <div class="usa-input-group">
+                <input class="usa-input" id="alcohol_content_pct" name="alcohol_content_pct"
+                       type="text" inputmode="decimal" autocomplete="off">
+                <div class="usa-input-suffix" aria-hidden="true">% ABV</div>
+              </div>
+            </div>
+            <div class="mobile-lg:grid-col-6">
+              <label class="usa-label" for="net_contents">Net contents</label>
+              <input class="usa-input" id="net_contents" name="net_contents" type="text"
+                     placeholder="750 mL" autocomplete="off">
             </div>
           </div>
-          <div class="field">
-            <label for="net_contents">Net contents</label>
-            <input id="net_contents" name="net_contents" type="text"
-                   placeholder="750 mL" autocomplete="off">
-          </div>
-        </div>
 
-        <div class="field-row">
-          <div class="field">
-            <label for="bottler_name">Bottler / producer <span class="optional">(optional)</span></label>
-            <input id="bottler_name" name="bottler_name" type="text" autocomplete="off">
+          <div class="grid-row grid-gap-2">
+            <div class="mobile-lg:grid-col-6">
+              <label class="usa-label" for="bottler_name">Bottler / producer <span class="usa-hint">(optional)</span></label>
+              <input class="usa-input" id="bottler_name" name="bottler_name" type="text" autocomplete="off">
+            </div>
+            <div class="mobile-lg:grid-col-6">
+              <label class="usa-label" for="bottler_address">Bottler address <span class="usa-hint">(optional)</span></label>
+              <input class="usa-input" id="bottler_address" name="bottler_address" type="text" autocomplete="off">
+            </div>
           </div>
-          <div class="field">
-            <label for="bottler_address">Bottler address <span class="optional">(optional)</span></label>
-            <input id="bottler_address" name="bottler_address" type="text" autocomplete="off">
-          </div>
-        </div>
-        <div class="field">
-          <label for="country_of_origin">Country of origin
-            <span class="optional">(imports only)</span></label>
-          <input id="country_of_origin" name="country_of_origin" type="text"
+
+          <label class="usa-label" for="country_of_origin">Country of origin <span class="usa-hint">(imports only)</span></label>
+          <input class="usa-input" id="country_of_origin" name="country_of_origin" type="text"
                  placeholder="Product of Scotland" autocomplete="off">
-        </div>
 
-        <div class="field">
-          <label for="image">Label artwork</label>
-          <div id="dropzone" class="dropzone" tabindex="0" role="button"
-               aria-describedby="dropzone-help">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 16V4m0 0L7 9m5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round"/>
-            </svg>
-            <p class="dropzone__label">Choose an image or drag it here</p>
-            <p id="dropzone-help" class="dropzone__hint">JPEG, PNG, WEBP or TIFF</p>
-            <input id="image" name="image" type="file"
-                   accept="image/jpeg,image/png,image/webp,image/tiff" class="visually-hidden">
+          <div class="usa-form-group">
+            <label class="usa-label" for="image">Label artwork</label>
+            <span class="usa-hint" id="image-hint">A photo or scan: JPEG, PNG, WEBP or TIFF</span>
+            <input class="usa-file-input" id="image" name="image" type="file" aria-describedby="image-hint"
+                   accept="image/jpeg,image/png,image/webp,image/tiff">
           </div>
-          <p id="filename" class="filename" aria-live="polite"></p>
+
+          <button type="submit" class="usa-button usa-button--big width-full margin-top-3" id="submit">Check this label</button>
+        </form>
+
+        {% if examples %}
+        <div class="examples" id="samples">
+          <h3 class="margin-top-0">Or try a sample label</h3>
+          <p class="usa-hint margin-top-0">A sample fills in its application details and checks
+            its label. The tag shows the result it should get. Change a detail and select
+            <strong>Check this label</strong> to check the sample again.</p>
+          <ul class="usa-list usa-list--unstyled">
+            {% for ex in examples %}
+            <li class="example">
+              <span class="usa-tag tag--{{ ex.expected }}">{{ {"pass": "Pass", "flag": "Review", "fail": "Fail"}[ex.expected] }}</span>
+              <button type="button" class="usa-button usa-button--unstyled text-left" data-example="{{ ex.id }}"
+                      data-record='{{ ex.record | tojson }}'>{{ ex.description }}</button>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+      </section>
+      </div>
+
+      <div class="desktop:grid-col-7">
+      <section class="panel" aria-labelledby="result-heading" aria-live="polite">
+        <h2 id="result-heading" class="margin-top-0">Result</h2>
+        <figure id="artwork" class="artwork" hidden>
+          <div class="artwork__frame">
+            <img id="artwork-img" alt="The label artwork being checked">
+            <svg id="artwork-boxes" class="artwork__boxes" viewBox="0 0 1 1"
+                 preserveAspectRatio="none" aria-hidden="true"></svg>
+          </div>
+          <figcaption>
+            <span id="artwork-caption"></span>
+            <span class="usa-checkbox bg-transparent" id="boxes-toggle-wrap" hidden>
+              <input class="usa-checkbox__input" type="checkbox" id="boxes-toggle" checked>
+              <label class="usa-checkbox__label margin-top-0" for="boxes-toggle">Show where each field was read</label>
+            </span>
+          </figcaption>
+        </figure>
+        <div id="result">
+          <p class="text-base">Results will appear here once a label is checked.
+            {% if examples %}No label to hand? <a class="usa-link" href="#samples">Try a sample label</a>.{% endif %}</p>
+        </div>
+        <p class="print-hint">
+          <button type="button" class="usa-button usa-button--outline" id="print" hidden>Print this checklist</button>
+        </p>
+      </section>
+      </div>
+    </div>
+
+    <div id="panel-batch" hidden>
+      <section class="panel" aria-labelledby="batch-heading">
+        <h2 id="batch-heading" class="margin-top-0">Review a batch</h2>
+        <p class="measure-5">Upload one file of application records and the label artwork.
+          Images are matched to records by COLA ID in the file name, or by an image column in
+          the records file.</p>
+
+        <div class="grid-row grid-gap-lg">
+          <div class="tablet:grid-col-6 usa-form-group margin-top-0">
+            <label class="usa-label margin-top-0" for="batch-records">Application records</label>
+            <span class="usa-hint" id="batch-records-hint">CSV or JSON. Needs at least a COLA ID and
+              a brand name per row; column names are matched flexibly.</span>
+            <input class="usa-file-input" id="batch-records" type="file" aria-describedby="batch-records-hint"
+                   accept=".csv,.json,text/csv,application/json">
+          </div>
+          <div class="tablet:grid-col-6 usa-form-group margin-top-0">
+            <label class="usa-label margin-top-0" for="batch-images">Label artwork</label>
+            <span class="usa-hint" id="batch-images-hint">Select every image in the batch at once.</span>
+            <input class="usa-file-input" id="batch-images" type="file" multiple aria-describedby="batch-images-hint"
+                   accept="image/jpeg,image/png,image/webp,image/tiff">
+          </div>
         </div>
 
-        <button type="submit" class="btn btn--primary" id="submit">Check this label</button>
-      </form>
+        <button type="button" class="usa-button usa-button--big margin-top-3" id="batch-run"
+                data-concurrency="{{ batch_concurrency }}"
+                data-max-labels="{{ max_batch_labels }}">Check this batch</button>
 
-      {% if examples %}
-      <div class="examples">
-        <h3>Or try a sample label</h3>
-        <ul>
-          {% for ex in examples %}
-          <li>
-            <button type="button" class="btn btn--link" data-example="{{ ex.id }}">
-              {{ ex.description }}
-            </button>
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-      {% endif %}
-    </section>
-
-    <section class="panel" aria-labelledby="result-heading" aria-live="polite">
-      <h2 id="result-heading">Result</h2>
-      <figure id="artwork" class="artwork" hidden>
-        <div class="artwork__frame">
-          <img id="artwork-img" alt="The label artwork being checked">
-          <svg id="artwork-boxes" class="artwork__boxes" viewBox="0 0 1 1"
-               preserveAspectRatio="none" aria-hidden="true"></svg>
+        {% if sample_batch %}
+        <div class="examples">
+          <h3 class="margin-top-0">Or try the sample batch</h3>
+          <p class="usa-hint margin-top-0">The generated fixture labels with their application
+            records, including deliberate defects and badly photographed compliant labels.</p>
+          <button type="button" class="usa-button usa-button--unstyled" id="batch-sample">Run the sample batch</button>
         </div>
-        <figcaption>
-          <span id="artwork-caption"></span>
-          <label class="toggle" id="boxes-toggle-wrap" hidden>
-            <input type="checkbox" id="boxes-toggle" checked>
-            Show where each field was read
-          </label>
-        </figcaption>
-      </figure>
-      <div id="result">
-        <p class="placeholder">Results will appear here once a label is checked.</p>
-      </div>
-      <p class="print-hint">
-        <button type="button" class="btn btn--link" id="print" hidden>Print this checklist</button>
-      </p>
-    </section>
-  </div>
-  <div id="panel-batch" hidden>
-    <section class="panel">
-      <h2>Review a batch</h2>
-      <p class="lede">Upload the label artwork and one file of application records.
-         Images are matched to records by COLA ID in the file name, or by an image
-         column in the records file.</p>
+        {% endif %}
 
-      <div class="field">
-        <label for="batch-records">Application records</label>
-        <input id="batch-records" type="file" accept=".csv,.json,text/csv,application/json">
-        <p class="dropzone__hint">CSV or JSON. Needs at least a COLA ID and a brand name
-           per row; column names are matched flexibly.</p>
-      </div>
-
-      <div class="field">
-        <label for="batch-images">Label artwork</label>
-        <input id="batch-images" type="file" multiple
-               accept="image/jpeg,image/png,image/webp,image/tiff">
-      </div>
-
-      <button type="button" class="btn btn--primary" id="batch-run"
-              data-concurrency="{{ batch_concurrency }}"
-              data-max-labels="{{ max_batch_labels }}">Check this batch</button>
-
-      {% if sample_batch %}
-      <div class="examples">
-        <h3>Or try the sample batch</h3>
-        <p class="dropzone__hint">The generated fixture labels with their application
-           records, including deliberate defects and badly photographed compliant labels.</p>
-        <button type="button" class="btn btn--link" id="batch-sample">Run the sample batch</button>
-      </div>
-      {% endif %}
-
-      <div id="batch-status" aria-live="polite"></div>
-      <div id="batch-results"></div>
-    </section>
+        <div id="batch-status" aria-live="polite"></div>
+        <div id="batch-results"></div>
+      </section>
+    </div>
   </div>
 </main>
 
-<footer>
-  <p>Checks are evaluated against 27 CFR Parts 5 and 16. This tool assists review;
-     it does not make determinations. <a href="/docs">API documentation</a>.</p>
-  <p class="assist-status">
-    Second opinion on referrals: <strong>{{ second_opinion or "off" }}</strong>.
-    Referral triage: <strong>{{ triage or "off" }}</strong>.
-    {% if not second_opinion and triage == "heuristic" %}No outbound connection is made.{% endif %}
-  </p>
+<footer class="usa-footer usa-footer--slim">
+  <div class="usa-footer__secondary-section">
+    <div class="grid-container">
+      <p class="margin-y-1">Checks cite 27 CFR part 4 (wine), part 5 (distilled spirits), part 7
+        (malt beverages) and part 16 (the health warning), chosen by the class/type designation.
+        This tool assists review; it does not make determinations.
+        <a class="usa-link" href="/docs">API documentation</a>.</p>
+      <p class="assist-status margin-y-1">
+        Second opinion on referrals: <strong>{{ second_opinion or "off" }}</strong>.
+        Referral triage: <strong>{{ triage or "off" }}</strong>.
+        {% if not second_opinion and triage == "heuristic" %}No outbound connection is made.{% endif %}
+      </p>
+    </div>
+  </div>
 </footer>
 
-<script src="/static/app.js"></script>
+<script src="/static/uswds/js/uswds.min.js"></script>
+<script src="/static/app.js?v={{ asset_version }}"></script>
 </body>
 </html>

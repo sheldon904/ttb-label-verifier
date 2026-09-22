@@ -52,6 +52,7 @@ def to_extraction(observations: dict) -> LabelExtraction:
     return LabelExtraction(
         brand_name=_clean(observations.get("brand_name")),
         class_type=_clean(observations.get("class_type")),
+        class_type_next=_clean(observations.get("class_type_next")),
         alcohol_statement=_clean(observations.get("alcohol_statement")),
         net_contents=_clean(observations.get("net_contents")),
         bottler_name=_clean(observations.get("bottler_name")),

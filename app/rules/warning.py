@@ -7,7 +7,7 @@ This is the one field with a byte-exact policy on wording. Three things are
 forgiven, because rejecting on them would be rejecting on something the
 statute never asked for, or on something the camera did:
 
-  * letter case in the body of the statement. 27 CFR 16.22(b) regulates the
+  * letter case in the body of the statement. 27 CFR 16.22(a)(2) regulates the
     case and weight of the words "GOVERNMENT WARNING" only.
   * line wrapping, including a hyphen at a line break. The statute contains no
     hyphens, so any "word- word" in a transcription is a wrap, not wording.
@@ -38,8 +38,15 @@ STATUTORY_BODY = STATUTORY_WARNING[len(WARNING_PREFIX):].strip()
 
 _WS = re.compile(r"\s+")
 # A hyphen followed by whitespace between two word characters is a line wrap.
-_HYPHEN_BREAK = re.compile(r"(?<=\w)-\s+(?=\w)")
-_NON_ALNUM = re.compile(r"[^a-z0-9 ]+")
+_HYPHEN_BREAK = re.compile(r"(?<=\w)[-\u2010-\u2014]\s+(?=\w)")
+_SOFT_HYPHEN = "\u00ad"
+_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+# Clause numbers OCR commonly misreads: "(1)" as "(l)", "(I)" or "(|)",
+# "(2)" as "(Z)". Mapped back before wording is compared, so the label is
+# referred as a read problem and never rejected as altered wording.
+_CLAUSE_ONE = re.compile(r"\(\s*[lI|!i]\s*\)")
+_CLAUSE_TWO = re.compile(r"\(\s*[zZ]\s*\)")
+_PREFIX = re.compile(r"(government)\s+(warning)\s*(:?)\s*", re.IGNORECASE)
 
 
 def normalize_whitespace(text: str) -> str:
@@ -50,7 +57,7 @@ def normalize_whitespace(text: str) -> str:
     in the prefix (title-case "Government Warning" is a real rejection reason)
     and so is the numbered-clause punctuation.
     """
-    text = _HYPHEN_BREAK.sub("", text)
+    text = _HYPHEN_BREAK.sub("", text.replace(_SOFT_HYPHEN, ""))
     return _WS.sub(" ", text).strip()
 
 
@@ -62,7 +69,10 @@ def letters(text: str) -> list[str]:
     change is stripped; everything the applicant would have had to change is
     kept.
     """
-    return _NON_ALNUM.sub("", text.casefold()).split()
+    text = _CLAUSE_TWO.sub(" 2 ", _CLAUSE_ONE.sub(" 1 ", text))
+    # Punctuation becomes a space, never nothing: "defects.(2)" and
+    # "WARNING:(1)" are two words each, not one.
+    return _NON_ALNUM.sub(" ", text.casefold()).split()
 
 
 def word_diff(expected: str, observed: str, ignore_case: bool = False) -> list[str]:
@@ -112,18 +122,12 @@ def split_prefix(text: str) -> tuple[str | None, str]:
     the word is re-attached. Returns (None, text) when the statement does not
     open with the two prefix words at all.
     """
-    parts = text.split(" ", 2)
-    if len(parts) < 2:
+    m = _PREFIX.match(text)
+    if not m:
         return None, text
-    first, second = parts[0], parts[1]
-    rest = parts[2] if len(parts) > 2 else ""
-    if first.casefold() != "government" or second.casefold().rstrip(":") != "warning":
-        return None, text
-    prefix = f"{first} {second}"
-    if not prefix.endswith(":") and rest.startswith(":"):
-        prefix += ":"
-        rest = rest[1:]
-    return prefix, rest.strip()
+    # "WARNING:(1)" with no space, and "WARNING :" with one, both split here.
+    prefix = f"{m.group(1)} {m.group(2)}{m.group(3)}"
+    return prefix, text[m.end():].strip()
 
 
 def _result(verdict: Verdict, observed: str | None, reason: str,
@@ -178,9 +182,11 @@ def check_warning_text(observed: str | None, legibility: str = "read") -> CheckR
         return _result(Verdict.FAIL, obs, (
             f"Wording is correct but the label reads {prefix!r}. "
             f"{WARNING_PREFIX!r} must appear in capital letters."
-        ), citation="27 CFR 16.22(b)")
+        ), citation="27 CFR 16.22(a)(2)")
 
     if prefix == WARNING_PREFIX:
+        if body == STATUTORY_BODY:
+            return _result(Verdict.PASS, obs, "Matches the statutory text; only the spacing differs.")
         if body.casefold() == STATUTORY_BODY.casefold():
             return _result(Verdict.PASS, obs, (
                 "Matches the statutory text. The body differs only in letter case, "
@@ -200,16 +206,16 @@ def check_warning_text(observed: str | None, legibility: str = "read") -> CheckR
             ), read_uncertain=True)
 
         # The full statute is present, and then something else follows it.
-        # That is not wrong wording -- but 16.22(a) requires the statement to
+        # That is not wrong wording -- but 16.21 requires the statement to
         # be separate and apart from all other information, so an agent looks.
         if body_words[:len(statute_words)] == statute_words:
             trailing = " ".join(body.split()[len(STATUTORY_BODY.split()):])
             return _result(Verdict.FLAG, obs, (
                 "The statutory text is present and exact, but additional text was read "
-                f"immediately after it: {trailing!r}. 27 CFR 16.22(a) requires the "
-                "statement to appear separate and apart from other information; confirm "
-                "on the artwork that this is a separate element."
-            ), citation="27 CFR 16.22(a)")
+                f"immediately after it: {trailing!r}. 27 CFR 16.21 requires the "
+                "statement to appear separate and apart from all other information; "
+                "confirm on the artwork that this is a separate element."
+            ))
 
     # Distinguish a transcription dropout from an altered statement.
     #
@@ -261,14 +267,14 @@ def check_warning_typography(prefix_is_bold: bool | None,
                              small_type: bool = False) -> CheckResult:
     """Advisory only.
 
-    27 CFR 16.22 requires the prefix in bold, the remainder not in bold, and a
-    minimum type size in millimetres that depends on container volume. A
+    27 CFR 16.22(a)(2) requires the prefix in bold and the remainder not in
+    bold; 16.22(b) sets a minimum type size in millimetres by container volume. A
     photograph gives us pixels, not millimetres -- without the container
     dimensions or image DPI we cannot verify type size, so this never
     hard-fails. What an image CAN support is stated: the relative weight of the
     prefix, and the size minimum that applies to this container.
     """
-    citation = "27 CFR 16.22"
+    citation = "27 CFR 16.22(a)(2) and (b)"
 
     # Jenny: people "try to get creative with the warning... burying it in tiny
     # text". Type too small to measure is that concern, and it is about size,

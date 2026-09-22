@@ -267,6 +267,41 @@ def test_the_same_image_is_paid_for_once():
     assert second["brand_name"] == "STONE'S THROW"
 
 
+def test_simultaneous_requests_for_one_image_share_one_paid_call():
+    """Two reviewers opening the same sample at once were two paid calls: the
+    cache is filled only when the first call returns."""
+    class Slow(FakeReader):
+        async def read(self, image, fields):
+            self.calls.append(list(fields))
+            await asyncio.sleep(0.05)
+            return {"brand_name": "STONE'S THROW", COST_KEY: 0.01}
+
+    inner = Slow()
+    guarded = GuardedReader(inner, daily_limit=5)
+
+    async def both():
+        return await asyncio.gather(*(guarded.read(b"img", ["brand_name"]) for _ in range(3)))
+
+    reads = asyncio.run(both())
+    assert len(inner.calls) == 1 and guarded.calls_today == 1
+    assert all(r["brand_name"] == "STONE'S THROW" for r in reads)
+    assert sum(COST_KEY in r for r in reads) == 1  # the cost is reported once
+
+
+def test_a_failed_shared_call_fails_every_waiter_and_is_not_cached():
+    inner = FakeReader(raises=RuntimeError("provider down"))
+    guarded = GuardedReader(inner, daily_limit=5)
+
+    async def both():
+        return await asyncio.gather(*(guarded.read(b"img", ["brand_name"]) for _ in range(2)),
+                                    return_exceptions=True)
+
+    assert all(isinstance(r, RuntimeError) for r in asyncio.run(both()))
+    inner.raises = None
+    inner.reads = {"brand_name": "X"}
+    assert asyncio.run(guarded.read(b"img", ["brand_name"]))["brand_name"] == "X"
+
+
 def test_the_daily_limit_stops_paid_calls_and_the_referral_stands():
     guarded = GuardedReader(FakeReader({"brand_name": "STONE'S THROW"}), daily_limit=1)
     asyncio.run(guarded.read(b"one", ["brand_name"]))

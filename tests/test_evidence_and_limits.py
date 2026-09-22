@@ -268,3 +268,81 @@ def test_pipeline_runs_triage_and_second_opinion_in_order():
     assert b.result.verdict is Verdict.FLAG
     assert b.result.triage is not None
     assert b.telemetry["second_opinion"] == {"called": False}
+
+
+# --- limits that must hold under load ---------------------------------------
+
+def test_a_flood_of_new_addresses_never_refills_a_throttled_one():
+    """Clearing every bucket when the table filled handed a throttled client a
+    full allowance. Eviction takes the least recently used instead."""
+    clock = Clock()
+    b = TokenBuckets(per_minute=60, burst=1, clock=clock, max_keys=100)
+    assert b.take("abuser") == 0
+    for i in range(99):
+        clock.t += 0.001
+        b.take(f"new-{i}")
+    clock.t += 0.001
+    assert b.take("abuser") > 0  # recently used, so still tracked and still empty
+    for i in range(99, 150):
+        clock.t += 0.001
+        b.take(f"new-{i}")
+    assert len(b._buckets) <= 100
+
+
+def test_a_missing_field_is_named_in_plain_words(client):
+    r = client.post("/api/review", data={"cola_id": "X", "brand_name": "Y"})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "Please provide a label image."
+    assert isinstance(r.json()["errors"], list)
+
+
+def test_an_unknown_option_is_explained(client):
+    r = client.post("/api/review/example/clean_01?second_opinion=always")
+    assert r.status_code == 422
+    assert r.json()["detail"].startswith("The request was not valid. second_opinion:")
+
+
+def test_an_oversized_upload_is_refused_with_its_size(client):
+    from app import main
+    before = main.settings.max_upload_bytes
+    main.settings = replace(main.settings, max_upload_bytes=1_000_000)
+    try:
+        r = client.post("/api/review", data={"cola_id": "X", "brand_name": "Y"},
+                        files={"image": ("big.png", b"\0" * 1_500_000, "image/png")})
+    finally:
+        main.settings = replace(main.settings, max_upload_bytes=before)
+    assert r.status_code == 413
+    # The whole file's size, though only the first megabyte was read.
+    assert r.json()["detail"].startswith("That image is 1.5 MB. The limit is 1 MB.")
+
+
+def test_the_ocr_slot_is_released_before_the_model_is_asked():
+    """Holding the OCR slot through a slow model call made clean labels queue
+    behind a referred one."""
+    from app.pipeline import review_label
+
+    gate = asyncio.Semaphore(1)
+    held_during_read = []
+
+    class Reader:
+        name = "r"
+
+        async def read(self, image, fields):
+            held_during_read.append(gate.locked())
+            return {}
+
+    class HalfRead:
+        """The brand washed out, so the second reader is asked about it."""
+
+        async def extract_raw(self, raw, prepared):
+            return {"brand_name": None, "class_type": "Straight Rye Whiskey",
+                    "alcohol_statement": "50% Alc./Vol.", "net_contents": "750 mL",
+                    "warning_text": STATUTORY_WARNING, "warning_prefix_is_bold": True,
+                    "warning_legibility": "read",
+                    "field_confidence": {"brand_name": 0.0}}, {"engine": "fake"}
+
+    raw = (FIXTURES / "clean_01.png").read_bytes()
+    record = ApplicationRecord(cola_id="T", brand_name="Stone's Throw",
+                               class_type="Straight Rye Whiskey")
+    asyncio.run(review_label(raw, record, HalfRead(), second_opinion=Reader(), ocr_gate=gate))
+    assert held_during_read == [False]

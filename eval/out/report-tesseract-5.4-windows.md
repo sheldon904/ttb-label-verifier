@@ -1,6 +1,6 @@
 # Evaluation report: `ocr:tesseract`
 
-**30 fixtures · 90.0% verdict accuracy**
+**37 fixtures · 91.9% verdict accuracy**
 
 OCR engine: Tesseract 5.4.0.20240606.
 
@@ -10,7 +10,7 @@ A single accuracy number hides the distinction that matters here: escalating a c
 
 | outcome | count |
 |---|---|
-| Correct | 27 |
+| Correct | 34 |
 | Referred to a human when not strictly needed | 3 |
 | Defective, referred to a human instead of rejected | 0 |
 | **Wrong in a way that harms someone** | **0** |
@@ -23,30 +23,32 @@ Measured at concurrency **1** (interactive).
 
 | p50 | p95 | p99 | max |
 |---|---|---|---|
-| 1275 ms | 1533 ms | 1708 ms | 1708 ms |
+| 1075 ms | 1258 ms | 1292 ms | 1292 ms |
 
 Interactive target is < 5 000 ms. **p95 MET.**
 
-Throughput: **46 labels/min** (30 in 39.2s). A 300-label batch would take about **6.5 minutes** at this concurrency.
+Throughput: **54 labels/min** (37 in 40.7s). A 300-label batch would take about **5.5 minutes** at this concurrency.
 
 ## Verdict confusion matrix
 
 | expected \ actual | pass | flag | fail |
 |---|---|---|---|
-| **pass** | 11 | 3 | 0 |
+| **pass** | 16 | 3 | 0 |
 | **flag** | 0 | 4 | 0 |
-| **fail** | 0 | 0 | 12 |
+| **fail** | 0 | 0 | 14 |
 
 ## Field extraction accuracy
 
+Exact match with the text printed on the artwork, before any second reading. The brand and class are scored as the rules see them: a brand set on two lines is read as two lines and joined against the application.
+
 | field | correct |
 |---|---|
-| `alcohol_statement` | 93% |
+| `alcohol_statement` | 92% |
 | `brand_name` | 97% |
 | `class_type` | 97% |
 | `net_contents` | 97% |
-| `warning_prefix_is_bold` | 93% |
-| `warning_text` | 90% |
+| `warning_prefix_is_bold` | 95% |
+| `warning_text` | 92% |
 
 ## Referral triage (`heuristic`)
 
@@ -56,13 +58,13 @@ Triage orders referrals; it never changes a verdict. A referral of a label that 
 |---|---|---|
 | `brand_near_miss` | genuine | 0.85 |
 | `v2_body_caps_not_bold` | genuine | 0.55 |
+| `warning_microtype` | genuine | 0.55 |
 | `warning_prefix_not_bold` | genuine | 0.55 |
 | `photo_compressed` | a read problem | 0.20 |
 | `photo_glare` | a read problem | 0.20 |
 | `photo_soft_focus` | a read problem | 0.20 |
-| `warning_microtype` | genuine | 0.20 |
 
-Genuine referrals ranked above read problems in **75%** of pairs.
+Genuine referrals ranked above read problems in **100%** of pairs (complete separation).
 
 ## Cost
 
@@ -86,33 +88,40 @@ None.
 
 | fixture | expected | actual | ms | description |
 |---|---|---|---|---|
-| `abv_mismatch` | fail | fail | 1332 | Label states 40%, application says 45% |
-| `abv_no_proof` | pass | pass | 1257 | ABV only, no proof statement -- perfectly legal |
-| `brand_case_difference` | pass | pass | 1300 | Label is all caps, application is title case. Dave: 'obviously the same thing.' |
-| `brand_near_miss` | flag | flag | 1343 | One character apart -- ambiguous, must escalate rather than guess |
-| `brand_wrong` | fail | fail | 1354 | Entirely different brand on the artwork |
-| `clean_01` | pass | pass | 1275 | Compliant label, Old Tom Distillery |
-| `clean_02` | pass | pass | 1214 | Compliant label, Stone'S Throw |
-| `clean_03` | pass | pass | 1231 | Compliant label, Copper Ridge Reserve |
-| `net_contents_centilitres` | pass | pass | 1242 | '75 cl' on an import against '750 mL' on the application -- equivalent |
-| `net_contents_missing` | fail | fail | 1262 | Net contents absent from the artwork |
-| `net_contents_wrong` | fail | fail | 1239 | 700 mL on the label, 750 mL on the application |
-| `photo_compressed` | pass | flag ⚠ | 1533 | Heavily re-compressed JPEG, as arrives from email chains |
-| `photo_glare` | pass | flag ⚠ | 1360 | Compliant label with specular glare across the upper third |
-| `photo_skewed` | pass | pass | 1512 | Compliant label shot at an angle |
-| `photo_skewed_and_defective` | fail | fail | 1372 | Angled shot AND a title-case warning -- degradation must not mask a real defect |
-| `photo_soft_focus` | pass | flag ⚠ | 1447 | Compliant label, slightly out of focus |
-| `proof_inconsistent` | fail | fail | 1351 | Label contradicts itself: 45% is 90 proof, not 80 |
-| `v2_body_caps` | pass | pass | 1278 | Second template: whole statement in capitals; 16.22 regulates only the prefix |
-| `v2_body_caps_not_bold` | flag | flag | 1279 | Second template: whole statement in capitals, prefix in regular weight |
-| `v2_import_wrong_country` | fail | fail | 1246 | Second template: Scotch declared Scottish, label says Canada |
-| `v2_malt_floz` | pass | pass | 1217 | Second template: '12 FL OZ' on the label, '355 mL' on the application |
-| `v2_malt_floz_wrong` | fail | fail | 1396 | Second template: '16 FL OZ' on the label, '355 mL' on the application |
-| `v2_photo_skewed` | pass | pass | 1708 | Second template: compliant wine photographed at an angle |
-| `v2_title_case` | fail | fail | 1334 | Second template: title-case warning prefix |
-| `v2_wine_clean` | pass | pass | 1232 | Second template: compliant wine, serif, web address under the warning |
-| `warning_microtype` | flag | flag | 1235 | Text buried at ~6pt -- too small to judge weight, must not guess |
-| `warning_missing` | fail | fail | 1121 | No health warning statement at all |
-| `warning_prefix_not_bold` | flag | flag | 1116 | Correct text, but the prefix is set in regular weight -- advisory only |
-| `warning_reworded` | fail | fail | 1092 | Softened wording -- 'may wish to avoid' instead of 'should not drink' |
-| `warning_title_case` | fail | fail | 1259 | 'Government Warning:' in title case -- the rejection Jenny caught |
+| `abv_mismatch` | fail | fail | 1068 | Label states 40%, application says 45% |
+| `abv_no_proof` | pass | pass | 1057 | ABV only, no proof statement -- perfectly legal |
+| `brand_case_difference` | pass | pass | 1067 | Label is all caps, application is title case. Dave: 'obviously the same thing.' |
+| `brand_near_miss` | flag | flag | 1110 | One character apart -- ambiguous, must escalate rather than guess |
+| `brand_wrong` | fail | fail | 1180 | Entirely different brand on the artwork |
+| `clean_01` | pass | pass | 1071 | Compliant label, Old Tom Distillery |
+| `clean_02` | pass | pass | 1075 | Compliant label, Stone'S Throw |
+| `clean_03` | pass | pass | 1065 | Compliant label, Copper Ridge Reserve |
+| `net_contents_centilitres` | pass | pass | 1076 | '75 cl' on an import against '750 mL' on the application -- equivalent |
+| `net_contents_missing` | fail | fail | 1062 | Net contents absent from the artwork |
+| `net_contents_wrong` | fail | fail | 1062 | 700 mL on the label, 750 mL on the application |
+| `photo_compressed` | pass | flag ⚠ | 1286 | Heavily re-compressed JPEG, as arrives from email chains |
+| `photo_glare` | pass | flag ⚠ | 1080 | Compliant label with specular glare across the upper third |
+| `photo_skewed` | pass | pass | 1258 | Compliant label shot at an angle |
+| `photo_skewed_and_defective` | fail | fail | 1240 | Angled shot AND a title-case warning -- degradation must not mask a real defect |
+| `photo_soft_focus` | pass | flag ⚠ | 1085 | Compliant label, slightly out of focus |
+| `proof_inconsistent` | fail | fail | 1061 | Label contradicts itself: 45% is 90 proof, not 80 |
+| `v2_body_caps` | pass | pass | 1131 | Second template: whole statement in capitals; 16.22 regulates only the prefix |
+| `v2_body_caps_not_bold` | flag | flag | 1132 | Second template: whole statement in capitals, prefix in regular weight |
+| `v2_import_wrong_country` | fail | fail | 1063 | Second template: Scotch declared Scottish, label says Canada |
+| `v2_malt_floz` | pass | pass | 1102 | Second template: '12 FL OZ' on the label, '355 mL' on the application |
+| `v2_malt_floz_wrong` | fail | fail | 1099 | Second template: '16 FL OZ' on the label, '355 mL' on the application |
+| `v2_photo_skewed` | pass | pass | 1292 | Second template: compliant wine photographed at an angle |
+| `v2_title_case` | fail | fail | 1070 | Second template: title-case warning prefix |
+| `v2_wine_clean` | pass | pass | 1055 | Second template: compliant wine, serif, web address under the warning |
+| `v3_abv_wrong` | fail | fail | 1058 | Third template: stacked brand, label states 40% against 45% on the application |
+| `v3_dark_label` | pass | pass | 1060 | Third template: light serif type on a dark label, brand on two lines |
+| `v3_dark_title_case` | fail | fail | 1050 | Third template: dark label with a title-case warning prefix |
+| `v3_import_agave` | pass | pass | 1015 | Third template: imported tequila; '100% Blue Agave' is the class, not the strength |
+| `v3_large_scan` | pass | pass | 1190 | Third template: a 2700 x 3900 pixel scan |
+| `v3_one_line_statement` | pass | pass | 1122 | Third template: net contents on the same line as the alcohol statement |
+| `v3_stacked_brand` | pass | pass | 1077 | Third template: brand set on two lines in two sizes |
+| `warning_microtype` | flag | flag | 1033 | Text buried at ~6pt -- too small to judge weight, must not guess |
+| `warning_missing` | fail | fail | 980 | No health warning statement at all |
+| `warning_prefix_not_bold` | flag | flag | 1088 | Correct text, but the prefix is set in regular weight -- advisory only |
+| `warning_reworded` | fail | fail | 1094 | Softened wording -- 'may wish to avoid' instead of 'should not drink' |
+| `warning_title_case` | fail | fail | 1054 | 'Government Warning:' in title case -- the rejection Jenny caught |

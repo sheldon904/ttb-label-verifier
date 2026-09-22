@@ -92,3 +92,50 @@ def test_bom_prefixed_csv_from_excel_is_handled():
     """Excel writes a UTF-8 BOM, which otherwise corrupts the first header."""
     p = parse_records("﻿cola_id,brand\n24-001,Old Tom\n".encode(), "x.csv")
     assert p.records[0].cola_id == "24-001"
+
+
+# --- exports from other tools ---------------------------------------------
+
+def test_an_unparseable_or_infinite_abv_is_a_row_error():
+    for value in ("nan", "inf", "-inf"):
+        p = parse_records(f"cola_id,brand,abv\n1,X,{value}\n".encode(), "x.csv")
+        assert not p.records and "not a number" in p.errors[0]
+
+
+def test_a_decimal_comma_abv_is_read():
+    p = parse_records(b'cola_id;brand;abv\n1;X;"40,5"\n', "x.csv")
+    assert p.records[0].alcohol_content_pct == 40.5
+
+
+def test_two_columns_for_one_field_keep_the_first():
+    p = parse_records(b"TTB ID,ID,Brand\n24-001,999,Old Tom\n", "x.csv")
+    assert p.records[0].cola_id == "24-001"
+
+
+def test_a_fanciful_name_is_not_taken_as_the_brand():
+    """On a COLA the fanciful name is a separate field; reading it as the brand
+    failed the brand check on a compliant label."""
+    p = parse_records(b"cola_id,brand,fanciful_name\n1,Old Tom,Midnight Reserve\n", "x.csv")
+    assert p.records[0].brand_name == "Old Tom"
+
+
+def test_a_semicolon_export_from_european_excel_is_read():
+    p = parse_records(b"cola_id;brand;abv;net_contents\n24-001;Old Tom;45;750 mL\n", "x.csv")
+    assert p.records[0].brand_name == "Old Tom"
+    assert p.records[0].net_contents == "750 mL"
+
+
+def test_a_tab_separated_export_is_read():
+    p = parse_records(b"cola_id\tbrand\n24-001\tOld Tom, Reserve\n", "x.txt")
+    assert p.records[0].brand_name == "Old Tom, Reserve"
+
+
+def test_excel_unicode_text_export_is_read():
+    text = "cola_id\tbrand\n24-001\tCh\u00e2teau Belle Rive\n"
+    p = parse_records(text.encode("utf-16"), "x.txt")
+    assert p.records[0].brand_name == "Ch\u00e2teau Belle Rive"
+
+
+def test_a_comma_inside_quotes_does_not_split_the_field():
+    p = parse_records(b'cola_id,brand,bottler_address\n1,X,"Bardstown, Kentucky"\n', "x.csv")
+    assert p.records[0].bottler_address == "Bardstown, Kentucky"

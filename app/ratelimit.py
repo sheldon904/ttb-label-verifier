@@ -49,11 +49,19 @@ class TokenBuckets:
         return (cost - b.tokens) / self.rate if self.rate else math.inf
 
     def _forget_idle(self, now: float) -> None:
+        """Drop buckets that have refilled, then the least recently used.
+
+        Never all of them: clearing every bucket at once handed a throttled
+        client a full allowance as soon as enough new addresses appeared.
+        """
         full_after = self.capacity / self.rate if self.rate else math.inf
         for k in [k for k, b in self._buckets.items() if now - b.updated >= full_after]:
             del self._buckets[k]
-        if len(self._buckets) >= self._max_keys:
-            self._buckets.clear()
+        excess = len(self._buckets) - self._max_keys + max(1, self._max_keys // 10)
+        if excess > 0:
+            oldest = sorted(self._buckets, key=lambda k: self._buckets[k].updated)[:excess]
+            for k in oldest:
+                del self._buckets[k]
 
 
 def client_key(request: Request, trust_proxy_headers: bool) -> str:

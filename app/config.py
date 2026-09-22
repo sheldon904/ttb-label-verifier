@@ -1,9 +1,10 @@
 """Runtime configuration.
 
-Deliberately dependency-free: a tiny .env reader plus os.environ. The default
-configuration needs no credentials and makes no outbound call. The two
-optional model features, a second opinion on referrals and referral triage,
-each need a key and are off unless one is set.
+Deliberately dependency-free: a tiny .env reader plus os.environ. With no
+credentials the app makes no outbound call. The second opinion on referrals
+switches on when an OpenRouter or Anthropic credential is present. Triage
+defaults to Jev, which needs an AI Gateway credential (or Vercel's OIDC
+token), and uses the local heuristic without one.
 """
 
 from __future__ import annotations

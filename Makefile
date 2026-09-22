@@ -1,12 +1,19 @@
 .PHONY: install dev test eval eval-throughput lint fixtures docker
 
-# The virtualenv lays its binaries out differently on Windows. Pick whichever
-# exists so the same targets work from Git Bash, WSL, macOS and Linux.
-VENV_BIN := $(if $(wildcard .venv/Scripts),.venv/Scripts,.venv/bin)
+# The virtualenv lays its binaries out differently on Windows. Decided by the
+# OS, not by what exists: before `make install` there is no .venv to look at.
+# WSL reports Linux and gets the Linux layout, which is what it creates.
+ifeq ($(OS),Windows_NT)
+VENV_BIN := .venv/Scripts
+PYTHON ?= python
+else
+VENV_BIN := .venv/bin
+PYTHON ?= python3
+endif
 PY := $(VENV_BIN)/python
 
 install:
-	python -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
+	$(PYTHON) -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
 
 dev:
 	$(PY) -m uvicorn app.main:app --reload --port 8000
@@ -18,9 +25,10 @@ test:
 eval:
 	$(PY) -m eval.run --concurrency 1
 
-# Throughput: the batch path, saturating the OCR thread pool.
+# Throughput: the batch path, saturating the OCR thread pool. Written to its
+# own file so it does not replace the latency report.
 eval-throughput:
-	$(PY) -m eval.run --concurrency 8
+	$(PY) -m eval.run --concurrency 8 --out eval/out/report-throughput.md
 
 lint:
 	$(PY) -m ruff check app tests eval

@@ -137,6 +137,11 @@ def render_assist(summary: EvalSummary, a) -> None:
         if costs:
             a(f"Cost: ${sum(costs):.4f} in total, ${sum(costs) / len(costs):.4f} per consulted "
               "label, as reported by the provider.\n")
+        if called:
+            slowest = max(called, key=lambda o: o.total_ms)
+            a(f"Slowest consulted label: {slowest.total_ms} ms (`{slowest.id}`), OCR and the "
+              "second reading together. On the page the OCR result is shown first and the "
+              "second reading replaces it when it arrives.\n")
         if cleared:
             a("| fixture | expected | rows cleared |")
             a("|---|---|---|")
@@ -216,6 +221,9 @@ def render(summary: EvalSummary) -> str:
     a("")
 
     a("## Field extraction accuracy\n")
+    a("Exact match with the text printed on the artwork, before any second reading. The "
+      "brand and class are scored as the rules see them: a brand set on two lines is read "
+      "as two lines and joined against the application.\n")
     a("| field | correct |")
     a("|---|---|")
     for k, v in summary.field_accuracy().items():
@@ -225,8 +233,13 @@ def render(summary: EvalSummary) -> str:
     render_assist(summary, a)
 
     a("## Cost\n")
-    a("Nothing per label. There is no model, no API and no token. The only cost is "
-      "local CPU time, which the latency table above already states.\n")
+    if summary.second_opinion:
+        a("OCR and the rules cost nothing per label: no model, no API and no token, only "
+          "the local CPU time in the latency table above. The second reading is the one "
+          "paid step. Only referred labels go to it, and its cost is stated above.\n")
+    else:
+        a("Nothing per label. There is no model, no API and no token. The only cost is "
+          "local CPU time, which the latency table above already states.\n")
 
     wrong = [o for o in summary.outcomes if o.wrong_fails]
     a("## Rows failed in error" + "\n")

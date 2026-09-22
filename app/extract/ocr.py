@@ -249,6 +249,7 @@ class OcrExtractor:
             # photograph. Nothing read from it is trustworthy, so the whole
             # label goes to a human rather than being rejected on bad evidence.
             brand = None
+        class_next = layout.pick_class_continuation(lines, warning_indices)
         alcohol = layout.pick_alcohol_statement(lines, warning_indices)
         net_contents = layout.pick_net_contents(lines, warning_indices)
         country = layout.pick_country(lines, warning_indices)
@@ -347,6 +348,7 @@ class OcrExtractor:
         observations = {
             "brand_name": brand,
             "class_type": class_type,
+            "class_type_next": class_next,
             "alcohol_statement": alcohol,
             "net_contents": net_contents,
             "bottler_name": bottler_name,

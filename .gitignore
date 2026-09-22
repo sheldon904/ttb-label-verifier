@@ -10,6 +10,8 @@ venv/
 .DS_Store
 # the evaluation report is committed as evidence of the measured claims
 eval/out/report-*.md.bak
+# local output of `make eval-throughput`; the committed copy names its build
+eval/out/report-throughput.md
 # fixture PNGs are committed on purpose -- the eval set must be
 # reproducible without the system fonts used to render them
 

@@ -8,8 +8,10 @@ measured here -- across the whole user-visible operation, not just the API call
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import hashlib
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.assist.second_opinion import SecondOpinionReader, apply_second_opinion
 from app.assist.triage import TriageProvider
@@ -32,22 +34,25 @@ class ReviewBundle:
 class ObservationCache:
     """Content-addressed cache of raw observations.
 
-    Keyed on the preprocessed image digest, so re-reviewing the same artwork --
-    common when an agent corrects an application record and retries -- costs
-    nothing. In-memory by design: nothing is persisted (Marcus's retention note).
+    Keyed on the digest of the uploaded bytes, so re-reviewing the same
+    artwork (an agent correcting an application record and retrying, or the
+    page asking again for the second reading) skips preparation and OCR both.
+    Each entry keeps the image's measurements without its pixels, so 512
+    entries stay small. In-memory by design: nothing is persisted (Marcus's
+    retention note).
     """
 
     def __init__(self, max_entries: int = 512) -> None:
-        self._store: dict[str, dict] = {}
+        self._store: dict[str, tuple[dict, PreparedImage]] = {}
         self._max = max_entries
 
-    def get(self, digest: str) -> dict | None:
+    def get(self, digest: str) -> tuple[dict, PreparedImage] | None:
         return self._store.get(digest)
 
-    def put(self, digest: str, observations: dict) -> None:
+    def put(self, digest: str, observations: dict, prepared: PreparedImage) -> None:
         if len(self._store) >= self._max:
             self._store.pop(next(iter(self._store)))
-        self._store[digest] = observations
+        self._store[digest] = (observations, replace(prepared, image=None))
 
     def __len__(self) -> int:
         return len(self._store)
@@ -60,27 +65,35 @@ async def review_label(
     cache: ObservationCache | None = None,
     second_opinion: SecondOpinionReader | None = None,
     triage: TriageProvider | None = None,
+    ocr_gate: asyncio.Semaphore | None = None,
 ) -> ReviewBundle:
     """OCR, then the rules; then, only if configured, the two advisory steps.
 
     Neither advisory step can produce a FAIL. The second opinion can clear a
     referral the OCR could not read; triage only annotates a referral.
+
+    `ocr_gate` bounds the CPU work only. Waiting on a model is not CPU work,
+    and holding an OCR slot through it made a clean label queue behind a
+    referred one.
     """
     started = time.perf_counter()
 
-    prepared = await asyncio.to_thread(prepare_for_ocr, raw)
-
+    # Looked up before any image work: preparing the image only to learn its
+    # digest cost 0.7 s on every repeat and on every second-reading request.
     # "is not None": an empty cache has len 0 and is falsy, which once meant
     # nothing was ever stored and the cache never worked.
-    cached = cache.get(prepared.sha256) if cache is not None else None
+    digest = hashlib.sha256(raw).hexdigest()
+    cached = cache.get(digest) if cache is not None else None
     if cached is not None:
-        observations, telemetry = cached, {"engine": "cache", "elapsed_ms": 0,
-                                           "cache_hit": True}
+        observations, prepared = cached
+        telemetry = {"engine": "cache", "elapsed_ms": 0, "cache_hit": True}
     else:
-        observations, telemetry = await extractor.extract_raw(raw, prepared)
+        async with ocr_gate if ocr_gate is not None else contextlib.nullcontext():
+            prepared = await asyncio.to_thread(prepare_for_ocr, raw)
+            observations, telemetry = await extractor.extract_raw(raw, prepared)
         telemetry["cache_hit"] = False
         if cache is not None:
-            cache.put(prepared.sha256, observations)
+            cache.put(digest, observations, prepared)
 
     extraction = to_extraction(observations)
     result = review(record, extraction)

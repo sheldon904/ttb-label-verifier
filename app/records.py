@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -21,7 +22,9 @@ from app.models import ApplicationRecord
 # Accepted column spellings, so an export does not have to be reshaped by hand.
 ALIASES = {
     "cola_id": {"cola_id", "cola", "colaid", "id", "ttb_id", "ttbid", "application_id"},
-    "brand_name": {"brand_name", "brand", "brandname", "fanciful_name"},
+    # Not "fanciful name": on a COLA that is a separate field, and taking it as
+    # the brand failed the brand check on a compliant label.
+    "brand_name": {"brand_name", "brand", "brandname"},
     "class_type": {"class_type", "class", "type", "classtype", "class_and_type", "designation"},
     "alcohol_content_pct": {"alcohol_content_pct", "abv", "alcohol", "alcohol_content",
                             "alc_vol", "alcohol_percent", "alcohol_pct", "alc_by_vol",
@@ -71,15 +74,22 @@ def _coerce(row: dict, index: int) -> tuple[ApplicationRecord | None, str | None
         value = raw_value.strip() if isinstance(raw_value, str) else raw_value
         if value in ("", None):
             continue
+        if canonical in mapped or (canonical == "image" and image is not None):
+            # Two columns mean the same field ("TTB ID" and "ID"): the first
+            # one in the file wins, rather than the last silently overwriting it.
+            continue
         if canonical == "image":
             image = str(value)
         elif canonical == "alcohol_content_pct":
             try:
-                mapped[canonical] = float(str(value).replace("%", "").strip())
+                abv = float(str(value).replace("%", "").replace(",", ".").strip())
             except ValueError:
+                abv = math.nan
+            if not math.isfinite(abv):
                 return None, None, (
                     f"Row {index}: alcohol content {value!r} is not a number."
                 )
+            mapped[canonical] = abv
         else:
             mapped[canonical] = value
 
@@ -94,8 +104,21 @@ def _coerce(row: dict, index: int) -> tuple[ApplicationRecord | None, str | None
         return None, None, f"Row {index}: {exc.errors()[0]['msg']}"
 
 
+def _dialect(text: str) -> type[csv.Dialect] | csv.Dialect:
+    """Comma, semicolon (European Excel), tab or pipe, judged from the header."""
+    header = text.splitlines()[0] if text else ""
+    try:
+        return csv.Sniffer().sniff(header, delimiters=",;\t|")
+    except csv.Error:
+        return csv.excel
+
+
 def parse_records(data: bytes, filename: str = "") -> ParsedRecords:
-    text = data.decode("utf-8-sig", errors="replace").strip()
+    # Excel's "Unicode text" export is UTF-16 with a byte-order mark.
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        text = data.decode("utf-16", errors="replace").strip()
+    else:
+        text = data.decode("utf-8-sig", errors="replace").strip()
     if not text:
         return ParsedRecords(errors=["The records file is empty."])
 
@@ -114,7 +137,7 @@ def parse_records(data: bytes, filename: str = "") -> ParsedRecords:
         rows = [r for r in loaded if isinstance(r, dict)]
     else:
         try:
-            rows = list(csv.DictReader(io.StringIO(text)))
+            rows = list(csv.DictReader(io.StringIO(text), dialect=_dialect(text)))
         except csv.Error as exc:
             return ParsedRecords(errors=[f"Could not read the CSV records file: {exc}."])
 

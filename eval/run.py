@@ -30,6 +30,7 @@ from app.config import REPO_ROOT, load_settings
 from app.extract.factory import build_extractor
 from app.models import ApplicationRecord
 from app.pipeline import review_label
+from app.rules.engine import stacked_brand
 from eval.report import EvalSummary, FixtureOutcome, render
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
@@ -83,6 +84,8 @@ async def run_one(fx: dict, extractor, sem: asyncio.Semaphore, reader=None, tria
             )
 
         observed = bundle.extraction.model_dump()
+        brand, klass, _ = stacked_brand(record, bundle.extraction)
+        observed |= {"brand_name": brand, "class_type": klass}
         failing = [c.field for c in bundle.result.checks if c.verdict.value != "pass"]
         # A row that FAILS without the fixture being built to fail it is a false
         # rejection of that element, even when the label fails for another
@@ -143,22 +146,22 @@ async def main_async(args) -> int:
                           second_opinion=reader.name if reader else None,
                           engine_version=tesseract_version())
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    report = render(summary)
-    # One report, overwritten each run. Per-build copies kept for comparison
-    # (report-tesseract-*.md) are made by hand, so a run never adds files.
-    (OUT_DIR / "report.md").write_text(report, encoding="utf-8")
+    # eval/out/report.md by default: the committed evidence for the README's
+    # numbers. --out writes a per-build copy (report-tesseract-*.md) instead.
+    out = Path(args.out) if args.out else OUT_DIR / "report.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render(summary), encoding="utf-8")
 
     unsafe = len(summary.unsafe_misses)
     print(f"\n{summary.accuracy:.1%} verdict accuracy over {summary.n} fixtures; "
           f"{len(summary.cautious_misses)} referred unnecessarily; "
           f"{len(summary.referred_defects)} defect(s) referred not rejected; {unsafe} harmful")
-    print(f"p50 {summary.pct(50)} ms · p95 {summary.pct(95)} ms"
+    print(f"p50 {summary.pct(50)} ms, p95 {summary.pct(95)} ms"
           + (f" (interactive budget 5000 ms: {'MET' if summary.pct(95) < 5000 else 'MISSED'})"
              if args.concurrency == 1 else " (under load)"))
     print(f"throughput {summary.throughput_per_min:.0f} labels/min "
           f"-> a 300-label batch in ~{300 / max(summary.throughput_per_min, 1e-9):.1f} min")
-    print(f"report -> {OUT_DIR / 'report.md'}")
+    print(f"report -> {out}")
 
     if unsafe > args.max_unsafe:
         print(f"\nFAIL: {unsafe} harmful outcome(s); the limit is {args.max_unsafe}.", file=sys.stderr)
@@ -184,6 +187,7 @@ def main() -> int:
                    help="Exit non-zero above this many harmful outcomes. Default 0.")
     p.add_argument("--min-accuracy", type=float, default=0.80,
                    help="Exit non-zero below this verdict accuracy. Default 0.80.")
+    p.add_argument("--out", help="Write the report here. Default eval/out/report.md.")
     return asyncio.run(main_async(p.parse_args()))
 
 

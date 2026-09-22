@@ -2,344 +2,259 @@
 
 [![CI](https://github.com/sheldon904/ttb-label-verifier/actions/workflows/ci.yml/badge.svg)](https://github.com/sheldon904/ttb-label-verifier/actions/workflows/ci.yml)
 
-Checks alcohol beverage label artwork against the data in its COLA application and
-shows a compliance agent exactly what matched, what did not and why.
+This tool checks alcohol label artwork against its COLA application. It shows a
+compliance agent what matched, what did not and why. Local OCR reads the label, plain
+rules decide, and every finding cites the regulation behind it.
 
-**Every verdict comes from local OCR and an inspectable rule with a CFR citation.**
-Two model features sit downstream of those rules, and neither can reject a label:
+> **Live prototype:** _add the deployed URL here_ (see [Deployment](#deployment))
 
-- **A second reading.** When OCR cannot read part of a label and the rules refer it,
-  Claude Sonnet 5 (through OpenRouter) re-reads just those fields from the image. It can
-  clear the referral; it can never produce a rejection.
-- **Referral triage.** TypeSafe's Jev (through Vercel AI Gateway) estimates which
-  referrals in a batch are real defects, so the queue starts with them.
+![The compliant bourbon sample checked against an application edited to 40%. The alcohol row fails, and its box on the artwork is red.](docs/screenshot.png)
 
-Each switches on when its credential is present. With none, the whole app runs inside
-one container with no outbound call, which is what a locked-down network needs.
+## Try it in a minute
 
-> **Live prototype:** _add the deployed URL here at submission_ (see [Deployment](#deployment)).
+1. Open the app and pick a sample under **Or try a sample label**. A tag beside each
+   sample shows the result it should get. The sample fills in its application details
+   and the checklist appears beside the artwork. A box marks where each field was read;
+   select a checklist row to pick out its box.
+2. Change the alcohol content in the form and select **Check this label**. The tool
+   checks the same sample against the edited application, and that row fails.
+3. Pick the photograph with glare. OCR cannot read part of it, so the label is referred
+   at once. A second reading clears it a few seconds later, and each cleared row says
+   where its reading came from.
+4. Select **Many labels**, then **Run the sample batch**. Thirty-seven labels run with a
+   progress bar, a summary and a CSV export. Referrals sort by how likely each is to be
+   a real defect.
+5. Upload your own artwork under **One label**. Only the COLA ID and the brand name are
+   required.
+6. Read the API documentation at `/docs`.
 
-## Try it in sixty seconds
+## What it checks
 
-1. Open the app. Under **Or try a sample label**, click any of the six samples. The
-   artwork appears beside the checklist, with a box drawn where each field was read,
-   coloured by its result. Click a checklist row to pick out its box. The tilted
-   photograph shows the boxes following the tilt. The glare-damaged photograph is one
-   OCR cannot fully read: watch the second reading clear it, marked on each row it
-   changed.
-2. The checklist answers two questions separately: does the label match its
-   application, and does the label meet the regulation on its own terms.
-3. Click **Many labels**, then **Run the sample batch**. Thirty labels run through the
-   same endpoint with a progress bar, a summary and a CSV export. Referrals sort by how
-   likely each is to be a real defect, with a "likely cause" column.
-4. Upload your own artwork in **One label**. The form takes what is on a COLA
-   application; only COLA ID and brand name are required.
-5. The API is documented at `/docs`.
+The brief lists seven elements a label must carry. The tool checks all seven, plus the
+two things the worked example adds: the proof statement and the warning's typography.
+
+| Element | How the label is compared | Citation for spirits |
+|---|---|---|
+| Brand name | Case, punctuation and accents ignored, then a fuzzy match. A near miss goes to an agent. | 27 CFR 5.64 |
+| Class / type | The same normalisation with stricter bands. One designation inside the other goes to an agent. | 5.63(a)(2), subpart I |
+| Alcohol content | The percentage exactly. The proof must equal twice the percentage. The wording form is advisory. | 5.65 |
+| Net contents | Units converted first: `750 mL` = `75 cl` = `0.75 L`, `12 FL OZ` = `355 mL`, `1 PINT 6 FL OZ` | 5.70 |
+| Bottler name and address | Token match. A wrong name fails; a different address goes to an agent. | 5.66 to 5.68 |
+| Country of origin | Imports only. The country is compared and the wording around it is ignored. | 5.69, 19 CFR 134.11 |
+| Government warning | Exact wording against the statute, with a word-by-word difference | 16.21 |
+| Warning heading | `GOVERNMENT WARNING` in capital letters (fails otherwise) and bold (measured, advisory). The type-size minimum for this container is stated. | 16.22(a)(2), 16.22(b) |
+
+The citations follow the commodity. The class/type designation decides it: a beer cites
+part 7, a wine part 4 and a spirit part 5. A designation that names no commodity cites
+all three parts. A beer or a table wine without an alcohol statement goes to an agent,
+because parts 7 and 4 make the statement optional there.
+
+Each row gets one of three results: **Pass**, **Review** or **Fail**. A label fails when
+a row fails and needs review when a row needs a person. The checklist answers two
+questions separately: does the label match its application, and does the label meet the
+regulation on its own terms.
 
 ## Measured results
 
-30 fixture labels in two artwork styles, full OCR pipeline, one label at a time. The
-same fixtures were run on three Tesseract builds, because the first cross-build run
-found a failure the original build never showed.
+The evaluation runs 37 rendered labels in three artwork styles through the full pipeline,
+one label at a time. The same labels run on three Tesseract builds, because the builds
+disagree on individual reads.
 
 | Tesseract build | Correct | Compliant, referred | Defective, referred | **Harmful** | p95 |
 |---|---|---|---|---|---|
-| 5.4.0, Windows | 27 | 3 | 0 | **0** | 1.53 s |
-| 5.5.0, Debian (the container) | 26 | 3 | 1 | **0** | 1.45 s |
-| 5.3.4, Ubuntu 24.04 (CI) | 26 | 3 | 1 | **0** | 1.48 s |
+| 5.4.0, Windows | 34 | 3 | 0 | **0** | 1.26 s |
+| 5.5.0, Debian (the container) | 33 | 3 | 1 | **0** | 1.40 s |
+| 5.3.4, Ubuntu 24.04 (CI) | 33 | 3 | 1 | **0** | 1.42 s |
 
-The interactive budget is 5 s. Batch throughput is 219 labels a minute with 8 workers,
-so a 300-label peak-season batch takes about a minute and a half. A verdict costs
-nothing; a referred label that gets a second reading costs about a cent. Reports: [`eval/out/report.md`](eval/out/report.md) and the per-build copies
-beside it.
+- **Harmful** counts a compliant label rejected, a defective label passed and any single
+  row failed in error. `make eval` exits non-zero on one harmful outcome, or under 80%
+  accuracy.
+- **Compliant, referred** is three photographs of compliant labels (glare, soft focus and
+  heavy compression) sent to an agent. Each costs an agent a minute.
+- **Defective, referred** is one label on two builds. Its "16 FL OZ" reads at near-zero
+  confidence, and a field read that badly cannot reject. The agent still sees the defect.
 
-**With the second reading on**, the same 30 labels on Tesseract 5.4 score 30 of 30 with
-zero harmful outcomes: the three compliant photographs OCR could not read are cleared,
-and nothing else changes. Three models were compared through OpenRouter on the same
-run:
+Sarah Chen's budget is 5 seconds a label. The median is 1.1 seconds. With 8 workers, a
+Windows machine with 12 logical processors checks 271 labels a minute. A 300-label
+importer batch therefore takes just over a minute.
 
-| Second-reading model | Correct of 30 | Harmful | Slowest re-read label | Cost per re-read label |
+**With the second reading on**, Claude Sonnet 5 re-read the 4 referred labels and the
+result was 37 of 37 with no harmful outcome. Three models ran on the same labels through
+OpenRouter:
+
+| Second-reading model | Correct of 37 | Harmful | Slowest re-read label | Cost per re-read label |
 |---|---|---|---|---|
-| **Claude Sonnet 5** (default) | **30** | **0** | **4.9 s** | $0.0052 |
-| Gemini 3.8 Flash | 30 | 0 | 14.7 s | $0.0025 |
-| GPT-6 Luna | 29 | 0 | 5.8 s | $0.0002 |
+| **Claude Sonnet 5** (default) | **37** | **0** | **4.8 s** | $0.0052 |
+| Gemini 3.8 Flash | 37 | 0 | 7.0 s | $0.0022 |
+| GPT-6 Luna | 36 | 0 | 7.5 s | $0.0002 |
 
-Only referred labels are re-read, four of the thirty here. Every other label keeps its
-1.1 s median. The agent never waits for the model: the checklist appears as soon as OCR
-and the rules have run, a line says a second reading is under way, and the page
-redraws when it lands. Measured in the browser on the glare sample, the first result
-arrived in 1.4 s and the cleared result about 4 s later; a repeat of the same label is
-instant because both readings are cached. Reports: `eval/out/report-second-opinion-*.md`.
+The single-label page shows the OCR result first and never waits for the model. In the
+browser, the glare sample showed its referral after 1.4 seconds and the cleared result at
+4.7 seconds. A repeat of the same label takes milliseconds, because both readings are
+cached. The batch page waits for each second reading, so a referred label takes a few
+seconds longer there.
 
-A single accuracy figure would hide the distinction that matters, so the evaluation
-reports four outcomes:
+Every report is in [`eval/out/`](eval/out/): one per build, the throughput run and one
+per second-reading model.
 
-- **Harmful** means a compliant label rejected, a label that needed a person rejected,
-  anything that should not pass passing, or any single row failed in error on any
-  label. There are none on any build, and `make eval` exits non-zero if one appears.
-- **Compliant, referred** is a degraded photograph of a compliant label sent to an
-  agent. It costs a minute.
-- **Defective, referred** is a defective label sent to an agent with the defect on the
-  checklist, where a rejection was expected. On two builds the "16 FL OZ" unit reads
-  at near-zero confidence, and a field read that badly is not allowed to reject.
+## How it uses AI
 
-## Scope and time box
+- **OCR reads every label.** Tesseract, a neural-network OCR engine, runs inside the app.
+  Rules turn its reading into findings.
+- **No model decides a verdict.** A rejection must survive an appeal. "The sixth word of
+  your warning reads X, 27 CFR 16.21 requires Y" can be quoted; a model's judgement
+  cannot. Marcus Williams's firewall also blocked the last vendor's model endpoints, and
+  no verdict here needs one.
+- **A second reading** (Claude Sonnet 5 through OpenRouter) re-reads only the fields OCR
+  could not read on a referred label. The rules run again on its reading, and a row
+  changes only if it now passes. It can clear a referral and can never reject. It answers
+  through a typed tool call. OpenRouter sends it only to providers that do not store or
+  train on requests. A cache, a daily limit and a credit limit on the credential cap the
+  cost.
+- **Referral triage** (Jev through Vercel AI Gateway) estimates which referrals in a batch
+  are real defects, so the queue starts with them. Jev receives only the tool's own
+  findings: field names, verdicts and scores. Label text never reaches it, because the
+  applicant writes the label. Without a gateway credential, a local heuristic ranks the
+  queue.
 
-The brief set no time budget, so I set one: about sixteen hours for the build, plus two
-review passes. Where something was cut it is listed under [Limitations](#limitations)
-rather than left half-built.
-
-## Approach
-
-### Where a model fits, and where it does not
-
-The centrepiece of this tool is an exact comparison against a statutory text, and its
-output can cause a federal rejection of someone's application. Every rejection here
-can be quoted back in an appeal: "the sixth word of your warning statement reads X,
-27 CFR 16.21 requires Y". A model's judgement cannot be quoted that way, so no model
-decides anything.
-
-It also answers Marcus Williams directly. His firewall blocked the last vendor's ML
-endpoints and killed half their features. The default deployment needs nothing from
-outside the building.
-
-The brief is titled "AI-Powered", and two thirds of the public submissions to it put a
-vision model in charge of reading. This one uses a model in the two places it helps and
-cannot hurt:
-
-- **A second reading of referred labels** (on when `OPENROUTER_API_KEY` is set). When
-  the rules refer a label because OCR could not read part of it, Claude Sonnet 5 re-reads
-  only those fields from the image, through OpenRouter, answering through a typed tool
-  call so free text cannot come back. The rules run again on the new reading, and a row is replaced
-  only if it now passes. A second reading that disagrees changes nothing, so the worst
-  a wrong or manipulated reading can do is clear a referral OCR could not read. The
-  row then says where its reading came from and asks the agent to confirm it. A
-  confident disagreement, such as a brand one letter off, is never offered. It costs
-  about a cent per referred label, only referred labels are ever sent, and three guards
-  cap the bill: a cache so a reviewer clicking the same sample twice pays once, a daily
-  call limit, and the OpenRouter credit limit. Requests are routed only to
-  providers that do not store or train on them. Any model on OpenRouter is one setting
-  away.
-- **Referral triage** (on by default; `TRIAGE=jev`). After a batch run, [Jev](https://vercel.com/docs/ai-gateway/modalities/evaluation)
-  estimates for each referral how likely it is to be a real defect rather than a read
-  problem, and the queue sorts by it. Jev receives field names, verdicts, similarity
-  scores and word counts. It receives no text from the label, because label text is
-  written by the applicant and anything written there would be a prompt. Without a
-  gateway credential, or when the call fails, a local heuristic takes over and the row
-  says so. That heuristic is also the baseline Jev has to beat: on the fixtures it ranks
-  genuine referrals above read problems in 75% of pairs. A referral costs Jev about
-  $0.00001.
-
-### The extraction / decision split
-
-`app/extract/` reports what is printed on the label. `app/rules/` decides what that
-means. The two never mix: extraction cannot return a verdict, and the rule engine
-never touches an image. That keeps the entire decision layer unit-testable with no
-image, no OCR and no I/O.
-
-### Matching policy is per field
-
-The brief plants a deliberate contradiction between two stakeholders. Dave Morrison
-wants `STONE'S THROW` to pass against `Stone's Throw`: "obviously the same thing."
-Jenny Park rejected a label for setting `Government Warning` in title case. Both are
-right, because they are describing different fields:
-
-| Field | Policy | Basis |
-|---|---|---|
-| Brand name | Unicode-normalise, casefold, strip punctuation, fuzzy ratio, banded PASS / FLAG / FAIL | 27 CFR 5.64 |
-| Class / type | Same normalisation, stricter bands: regulated vocabulary, not a mark | 5.63(a)(2), subpart I |
-| Alcohol content | Parse the percentage, compare to the application, cross-check proof = 2 × ABV, and check the statement uses a permitted form | 5.65(b) |
-| Net contents | Unit-normalise (`750 mL` = `75 cl` = `0.75 L`, `12 FL OZ` = `355 mL`), then compare | 5.70, 7.70 |
-| Bottler name and address | Token-set similarity; a name mismatch can fail, an address mismatch only flags | 5.66 to 5.68 |
-| Country of origin | Required on imports only; the country itself is compared, not the boilerplate | 5.69 |
-| Government warning | Whitespace-normalise, then exact against the statute, with a word-level diff | 16.21 |
-| Warning typography | Prefix weight by ink density, advisory; the 16.22(b) size minimum for this container is stated | 16.22 |
-
-Every citation was checked against the published CFR text on 2026-09-21.
-
-### Three verdicts, not two
-
-`PASS` / `FLAG` / `FAIL`. Dave has watched binary automation fail before; a system that
-cannot say "I'm not sure, look at this one" pushes its own uncertainty onto the
-applicant.
-
-### What the warning rule forgives, and why
-
-27 CFR 16.21 fixes the wording. 16.22(b) fixes the case and weight of the two words
-`GOVERNMENT WARNING` and nothing else about case. So the rule is exact on wording and
-on the prefix. It deliberately tolerates three things. The regulation does not mention
-them, or the camera can cause them:
-
-- **Body case.** A label that sets the whole statement in capitals is compliant and
-  passes. A title-case prefix is a real defect and fails, citing 16.22(b).
-- **Wrapping and hyphenation.** The statute contains no hyphens, so `preg-` at a line
-  end followed by `nancy` is a wrap.
-- **Punctuation and stray glyphs.** When every word is present and in order, a period
-  read as a colon is the camera's doing. It is referred to an agent, never rejected.
-
-Text that follows an exact statement on the same block, such as a web address, is
-treated as a separate element. It flags with a 16.22(a) citation, because the statement
-must appear separate and apart from other information, and an agent confirms.
-
-### Making OCR safe enough to reject on
-
-Tesseract's characteristic failure is losing text, not inventing it. These rules keep
-that failure mode from ever being reported as a violation:
-
-1. **Unreadable is not absent.** Small print detected but not resolved reports
-   `illegible`, which flags. Only genuine absence fails.
-2. **Dropped words are not altered words.** A near-perfect match that differs only by
-   deletion is treated as an imperfect read and flagged. Substitutions stay hard
-   failures.
-3. **Low confidence cannot reject.** A field read below 70% confidence downgrades any
-   failure to a flag.
-4. **A degraded image cannot reject anything.** Every label sets its brand as the most
-   prominent element. If nothing on the page is substantially larger than the body
-   copy, the brand did not survive the photograph and no field from that image is
-   trusted.
-5. **The warning block ends where the statute ends.** Once the closing words have been
-   read, whatever small print follows is a separate element.
-6. **A half-read quantity is a referral.** A number standing alone where the statements
-   are is a volume whose unit was lost, and it flags. A unit Tesseract read correctly
-   but scored near zero is re-attached, at that low score, so it too can only flag.
-
-Every row whose doubt comes from the image carries a `read_uncertain` marker. That
-marker is the only thing a second reading is allowed to act on.
-
-### What a second artwork style found
-
-Every threshold was first tuned on one rendered template. A second template (serif,
-left-aligned, a wine and two malt beverages in fluid ounces, small print under the
-warning) found four defects the first could not:
-
-- A two-line brand, "COPPER RIDGE" over "RESERVE", was read as "COPPER RIDGE" and
-  failed. The label failed for another reason too, so the verdict looked right; the
-  evaluation now also fails on any single row failed in error.
-- Georgia's "12 FL OZ" came back as "12" plus two words scored at zero, and the label
-  failed for a missing net contents statement.
-- A bold prefix over a body set in capitals measured as regular. About 0.2 of the
-  bold ratio is the capitals, so matching cases now use their own measured band.
-- A blank image was rotated twelve degrees, because every angle scored the same and
-  the search took the first one.
-
-All four are fixed and pinned by tests.
-
-### What recovered the most accuracy
-
-Two preprocessing steps, both found by measuring:
-
-- **Deskew.** A 7° tilt made Tesseract miss the warning statement entirely. Estimated
-  by projecting an edge map and maximising the squared gradient of the horizontal
-  profile.
-- **Upscale.** Small type sits below Tesseract's reliable floor until enlarged to
-  roughly 300 DPI equivalent.
-
-Together these took exact warning transcription from 17/22 to 20/22 on the first
-template.
-
-## Assumptions
-
-The brief is written as stakeholder interviews with no formal requirements section, so
-these are my readings of it:
-
-1. **Application records arrive as JSON or CSV alongside the images**, joined on
-   `cola_id`. The brief never says how application data enters the system; this was
-   the largest open question and I resolved it rather than blocking. Column headings
-   are matched flexibly, so a spreadsheet export works without reshaping.
-2. **Distilled spirits are the primary class in scope**, per the worked example. Wine
-   and malt beverage fixtures check that nothing is spirits-only by accident.
-3. **No COLA integration**, per Marcus. Standalone proof of concept.
-4. **Nothing is persisted.** Images are processed in memory and discarded.
-5. **Label versus application has no alcohol tolerance.** 27 CFR 5.65(c) allows 0.3
-   points between labeled and actual content, which is a laboratory question. The
-   application states what the label says, so the comparison here is exact.
-
-## Limitations
-
-- **Jev has not been measured live.** No AI Gateway credential was available. It is
-  built to the documented contract and tested against mocked responses, and the local
-  heuristic answers whenever Jev cannot (`python -m eval.run --triage jev` measures it).
-- **Type size cannot be verified from an image.** 27 CFR 16.22(b) specifies minimums
-  in millimetres; a photograph carries pixels. The applicable minimum is stated from
-  the container volume on every result so the agent knows what to check.
-- **The bold/regular bands are calibrated on few samples**, one regular sample for each
-  case pairing. Both bands leave an undecided zone that reports "cannot tell".
-- **Severe glare defeats field reading.** The tool detects this and refers the label to
-  a human. The second opinion is the path to recovering it.
-- **Class and type is compared as text.** Whether a designation is permitted for the
-  product (subpart I of Part 5) is not checked.
-- **Batch progress lives in the browser.** A page refresh loses it. Nothing is stored
-  server-side by design.
+Each model feature switches on only when its credential is present. Without them, the
+app makes no outbound connection.
 
 ## Running it
 
-The only system dependency is Tesseract.
+The app needs Python 3.11 or newer and Tesseract.
 
 ```bash
-# macOS                 brew install tesseract
-# Debian / Ubuntu       sudo apt install tesseract-ocr
-# Windows               winget install UB-Mannheim.TesseractOCR
-#                       (the default install path is found automatically)
+# Tesseract
+#   macOS             brew install tesseract
+#   Debian / Ubuntu   sudo apt install tesseract-ocr
+#   Windows           winget install UB-Mannheim.TesseractOCR
+#                     (the default install path is found automatically)
 
+# macOS, Linux and WSL
 make install
-make test                  # 245 tests, no network, no paid calls
-make eval                  # full fixture sweep, one label at a time
-make eval-throughput       # the same, 8 workers
-make dev                   # http://localhost:8000
+make test               # 362 tests, no network, no paid calls
+make eval               # every fixture label, one at a time
+make eval-throughput    # the same with 8 workers
+make dev                # http://localhost:8000
 ```
 
-The Makefile works from macOS, Linux, WSL and Git Bash on Windows. `make fixtures`
-regenerates every label and needs the fonts; `python fixtures/generate.py --new-only`
-renders only fixtures that do not have an image yet, so the committed evaluation set
-never changes under you.
+On Windows without `make`, run the same steps in PowerShell:
 
-### Configuration
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest -q
+.venv\Scripts\python -m eval.run
+.venv\Scripts\python -m uvicorn app.main:app --port 8000
+```
 
-| Variable | Default | Effect |
-|---|---|---|
-| `MAX_BATCH_CONCURRENCY` | 8 (4 in the container) | Labels in the OCR pool at once; the batch page reads it |
-| `RATE_LIMIT_PER_MINUTE` | 120 | Review requests per address per minute; over it, a 429 the batch page waits out |
-| `TRUST_PROXY_HEADERS` | off | Behind a host's load balancer, take the address from `X-Forwarded-For` |
-| `MAX_BATCH_LABELS` | 500 | Largest batch accepted |
-| `OPENROUTER_API_KEY` | none | Turns on the second reading. Set a credit limit for it at openrouter.ai |
-| `SECOND_OPINION` | auto | `auto` is on when a credential is present; `off` disables it; `anthropic` uses `ANTHROPIC_API_KEY` directly |
-| `SECOND_OPINION_MODEL` | `anthropic/claude-sonnet-5` | Any vision model on OpenRouter |
-| `SECOND_OPINION_DAILY_LIMIT` | 300 | Paid second readings per day per instance |
-| `AI_GATEWAY_API_KEY` | none | Lets triage ask Jev; on Vercel the deployment's OIDC token also works |
-| `TRIAGE` | jev | Falls back to the local heuristic without a credential; `off` hides triage |
-
-The page footer states which of the two model features is on. The evaluation never
-calls a paid model unless asked (`--second-opinion openrouter`), so `make eval` and CI
-stay free.
-
-### Deployment
+To run the container instead, the only requirement is Docker:
 
 ```bash
 docker build -t ttb-label-verifier .
 docker run --rm -p 8000:8000 ttb-label-verifier
 ```
 
-The image installs Tesseract and the English model at build time, runs as an
-unprivileged user, exposes `/healthz` and makes no outbound connection at run time
-unless a model credential is supplied. CI builds the image and checks it answers on
-every push.
+`make fixtures` renders every fixture label again and needs the fonts.
+`python fixtures/generate.py --new-only` renders only labels without an image yet, so
+the committed evaluation set never changes under you.
 
-**On Vercel**, which runs a `Dockerfile.vercel` as a function: import the repository as
-a new project, then set these environment variables and deploy.
+### Configuration
+
+| Variable | Default | Effect |
+|---|---|---|
+| `MAX_BATCH_CONCURRENCY` | 8 (4 in the container) | Labels in the OCR pool at once. The batch page reads it. |
+| `MAX_UPLOAD_BYTES` | 12 MiB | Largest image or records file accepted |
+| `MAX_BATCH_LABELS` | 500 | Largest batch accepted |
+| `RATE_LIMIT_PER_MINUTE` | 120 | Review requests per address per minute. The batch page waits out a 429. |
+| `TRUST_PROXY_HEADERS` | off | Behind a load balancer, take the address from `X-Forwarded-For` |
+| `OPENROUTER_API_KEY` | none | Turns on the second reading. Set a credit limit on this credential. |
+| `ANTHROPIC_API_KEY` | none | Turns on the second reading through Anthropic when there is no OpenRouter credential |
+| `SECOND_OPINION` | `auto` | `auto` uses OpenRouter, then Anthropic, whichever credential is set. `openrouter`, `anthropic` or `off` choose. |
+| `SECOND_OPINION_MODEL` | provider default | `anthropic/claude-sonnet-5` on OpenRouter, `claude-sonnet-5` on Anthropic. Any vision model on OpenRouter works. |
+| `SECOND_OPINION_DAILY_LIMIT` | 300 | Paid second readings per day per instance |
+| `AI_GATEWAY_API_KEY` | none | Lets triage ask Jev. On Vercel, the deployment's OIDC token works without it. |
+| `TRIAGE` | `jev` | Jev when a gateway credential exists, else the local heuristic. `heuristic` or `off` choose. |
+
+The page footer states which model features are on. The evaluation calls no paid model
+unless asked (`--second-opinion openrouter`), so `make eval` and CI stay free.
+
+### Deployment
+
+The image installs Tesseract, runs as an unprivileged user and answers on `/healthz`.
+CI builds it and checks two sample verdicts on every push.
+
+**On Vercel**, which runs `Dockerfile.vercel` as a function, import the repository as a
+new project, set these variables and deploy:
 
 | Variable | Value |
 |---|---|
 | `OPENROUTER_API_KEY` | an OpenRouter credential with a credit limit, for the second reading |
-| `AI_GATEWAY_API_KEY` | an AI Gateway credential, for Jev (optional: the deployment's OIDC token is tried) |
 | `TRUST_PROXY_HEADERS` | `1` |
+| `AI_GATEWAY_API_KEY` | optional: the deployment's OIDC token already reaches Jev |
 
-`Dockerfile.vercel` is a byte-for-byte copy of `Dockerfile`, checked by a test. An idle
-deployment scales to zero after a few minutes, so the first request after a quiet
-spell starts the container. Any other container host works the same way.
+`Dockerfile.vercel` is a copy of `Dockerfile`, and a test keeps the two identical. An
+idle deployment scales to zero, so the first request after a quiet spell starts the
+container.
 
-## Regulatory references
+**On Azure**, where the TTB already runs, the same image suits Azure Container Apps.
+[Microsoft documents](https://learn.microsoft.com/en-us/azure/container-apps/containerapp-up)
+this command for a directory with a Dockerfile. I did not run it.
 
-- 27 CFR 16.21: health warning statement text
-- 27 CFR 16.22: placement, prefix case and weight, type size by container volume
-- 27 CFR Part 5, subpart E: mandatory label information for distilled spirits (5.63 to 5.70)
-- 27 CFR Part 4 (wine), Part 7 (malt beverages; 7.70 net contents)
+```bash
+az containerapp up --name ttb-label-verifier --source . --ingress external --target-port 8000
+```
+
+## Tools used
+
+- Python 3.12, FastAPI, Uvicorn, Pydantic and Jinja2
+- Tesseract OCR 5 through pytesseract, with Pillow and NumPy to prepare each image
+- RapidFuzz for the fuzzy matches
+- The U.S. Web Design System 3.14 for the page, served from the app with no CDN
+- httpx for the two model calls: OpenRouter (Claude Sonnet 5) and Vercel AI Gateway (Jev)
+- pytest, Ruff, GitHub Actions and Docker
+
+## Assumptions
+
+The brief is a set of interviews with no formal requirements section, so these are my
+readings of it:
+
+1. **Application records arrive as CSV or JSON beside the images,** joined on the COLA
+   ID. The brief never says how application data enters the system. Column names are
+   matched flexibly, so a spreadsheet export works without reshaping.
+2. **The class/type designation names the commodity.** The application carries no
+   commodity field, so the tool infers it from words such as "Whiskey", "Cabernet" or
+   "Ale".
+3. **No COLA integration,** per Marcus. The tool is a standalone proof of concept.
+4. **Nothing is stored.** Images and records are processed in memory and discarded.
+5. **The label and the application must state the same alcohol content.** The 0.3-point
+   tolerance in 27 CFR 5.65(c) is between the label and the liquid, which is a
+   laboratory question.
+
+## Limitations
+
+- **Jev is unmeasured.** No AI Gateway credential was available, so Jev is tested
+  against mocked responses only. On the fixtures the local heuristic gives every
+  genuine referral a higher score than every reading problem.
+- **An image cannot give millimetres.** 27 CFR 16.22 sets a minimum type size and a
+  maximum number of characters per inch. The tool states the minimum for the container
+  so the agent knows what to check.
+- **The bold measurement rests on few samples:** one regular sample for each case
+  pairing. Between the bands, the row says it cannot tell.
+- **Glare, soft focus and heavy compression defeat OCR.** The tool refers those labels.
+  The second reading cleared all three in the evaluation.
+- **Class and type is compared as text.** The tool does not check the designation
+  against the standards of identity.
+- **The commodity comes from words in the designation.** An unusual designation cites
+  all three parts.
+- **Batch progress lives in the browser.** A page refresh loses it, because the server
+  stores nothing.
+- **The thresholds are tuned on rendered labels.** Real COLA artwork will move some of
+  them.
+
+## More detail
+
+[`docs/DECISIONS.md`](docs/DECISIONS.md) traces each requirement to its source in the
+brief. It also records each design decision, the rules that make OCR safe enough to
+reject on and what the measurements corrected along the way.

@@ -1,288 +1,168 @@
-/* Colour and type tokens follow the U.S. Web Design System palette, hand-rolled
-   rather than pulled from a CDN: no build step, no outbound dependency (Marcus),
-   and nothing to break in a restricted network.
+/* What USWDS does not provide. Everything else on the page (type, colour,
+   spacing, forms, buttons, alerts, tags, tables, the header and footer) is a
+   U.S. Web Design System component. Colours below are USWDS system tokens,
+   written as values so this file needs no build step.
 
-   Accessibility decisions that are requirements here, not polish:
-     - every status carries a text label, never colour alone (WCAG 1.4.1)
-     - base type is 18px; Sarah's benchmark is her 73-year-old mother
-     - visible focus rings, generous hit targets, one column on narrow screens
+   Requirements, not polish:
+     - every status carries a word as well as a colour (WCAG 1.4.1)
+     - text is 17px and form fields 18px; Sarah's benchmark is her 73-year-old mother
      - the result prints as a clean checklist; Dave prints his emails */
 
 :root {
-  --ink: #1b1b1b;
-  --ink-muted: #565c65;
-  --line: #dfe1e2;
-  --bg: #f9f9f9;
-  --surface: #ffffff;
-
-  --primary: #005ea2;
-  --primary-dark: #1a4480;
-  --success: #008817;
-  --success-bg: #ecf3ec;
-  --warn: #936f38;
-  --warn-bg: #faf3d1;
-  --error: #b50909;
-  --error-bg: #f4e3db;
-
-  --radius: 6px;
-  --gap: 1.5rem;
+  --green: #00a91c;        /* green-cool-40v, USWDS success */
+  --green-dark: #008817;
+  --gold: #ffbe2e;         /* gold-20v, USWDS warning */
+  --gold-dark: #936f38;
+  --red: #d54309;          /* red-warm-50v, USWDS error */
+  --red-dark: #b50909;
+  --blue: #005ea2;         /* blue-60v, USWDS primary */
+  --blue-dark: #1a4480;
+  --blue-bg: #e7f6f8;
+  --base-dark: #565c65;
+  --base-lighter: #dfe1e2;
+  --base-lightest: #f0f0f0;
 }
 
-* { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font: 400 18px/1.55 "Source Sans Pro", -apple-system, BlinkMacSystemFont,
-        "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-h1 { font-size: 2.2rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
-h2 { font-size: 1.3rem; margin: 0 0 1.1rem; }
-h3 { font-size: 1.05rem; margin: 0 0 .6rem; }
-
-a { color: var(--primary); }
-
-.banner {
-  background: #162e51; color: #fff; padding: .7rem 1.5rem; font-size: .95rem;
-}
-.banner p { margin: 0 auto; max-width: 1180px; }
-
-main { max-width: 1180px; margin: 0 auto; padding: 2.2rem 1.5rem 3rem; }
-.lede { color: var(--ink-muted); margin: 0 0 1.8rem; max-width: 60ch; }
-
-.layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); gap: var(--gap); }
-@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+/* USWDS sizes everything in rem, so one root change scales the whole page:
+   a 17px root gives 17px body text and 18px form fields. */
+html { font-size: 106.25%; }
 
 .panel {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 1.6rem;
+  background: #fff; border: 1px solid var(--base-lighter);
+  border-radius: .25rem; padding: 1.5rem; margin-bottom: 1.5rem;
 }
 
-/* --- form --- */
-.field { margin-bottom: 1.1rem; }
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-@media (max-width: 520px) { .field-row { grid-template-columns: 1fr; } }
-
-label { display: block; font-weight: 700; margin-bottom: .3rem; }
-.optional { font-weight: 400; color: var(--ink-muted); }
-
-input[type="text"] {
-  width: 100%; padding: .6rem .7rem; font: inherit; color: var(--ink);
-  background: #fff; border: 1px solid #565c65; border-radius: var(--radius);
+.examples {
+  margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--base-lighter);
 }
-input[type="text"]:focus-visible, .dropzone:focus-visible, button:focus-visible,
-a:focus-visible {
-  outline: 4px solid #face00; outline-offset: 2px;
-}
+.examples li { margin-bottom: .5rem; }
+/* The expected result first, in a column of its own, so the tags line up
+   however long the description is. */
+.example { display: flex; gap: .75rem; align-items: baseline; }
+.example .usa-tag { flex: 0 0 4.5rem; text-align: center; }
 
-.suffixed { display: flex; align-items: center; gap: .5rem; }
-.suffixed span { color: var(--ink-muted); white-space: nowrap; font-size: .95rem; }
+/* --- the artwork, beside the checklist that describes it ------------------ */
 
-.dropzone {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: .3rem; padding: 1.8rem 1rem; text-align: center; cursor: pointer;
-  border: 2px dashed #8d9297; border-radius: var(--radius);
-  background: #f0f0f0; color: var(--primary);
-}
-.dropzone:hover, .dropzone.is-over { background: #e6f1f8; border-color: var(--primary); }
-.dropzone__label { margin: .2rem 0 0; font-weight: 700; }
-.dropzone__hint { margin: 0; font-size: .9rem; color: var(--ink-muted); }
-.filename { margin: .5rem 0 0; font-size: .95rem; color: var(--ink-muted); }
-
-.btn {
-  font: inherit; font-weight: 700; border-radius: var(--radius);
-  padding: .75rem 1.4rem; cursor: pointer; border: none;
-}
-.btn--primary { background: var(--primary); color: #fff; width: 100%; font-size: 1.05rem; }
-.btn--primary:hover { background: var(--primary-dark); }
-.btn--primary[disabled] { background: #8d9297; cursor: progress; }
-.btn--link {
-  background: none; color: var(--primary); text-decoration: underline;
-  padding: .35rem 0; text-align: left; font-weight: 400;
-}
-.btn--link:hover { color: var(--primary-dark); }
-.btn--link[disabled] { color: var(--ink-muted); cursor: progress; }
-
-.examples { margin-top: 1.8rem; padding-top: 1.3rem; border-top: 1px solid var(--line); }
-.examples ul { list-style: none; margin: 0; padding: 0; }
-.examples .dropzone__hint { margin-bottom: .4rem; }
-
-/* --- the artwork, beside the checklist that describes it --- */
 .artwork {
-  margin: 0 0 1.2rem; padding: .6rem; background: #f0f0f0;
-  border: 1px solid var(--line); border-radius: var(--radius); text-align: center;
+  margin: 0 0 1.25rem; padding: .75rem; background: var(--base-lightest);
+  border-radius: .25rem; text-align: center;
 }
 .artwork__frame { position: relative; display: inline-block; max-width: 100%; }
-.artwork img {
-  display: block; max-width: 100%; max-height: 420px; background: #fff;
+.artwork img { display: block; max-width: 100%; max-height: 420px; background: #fff; }
+.artwork figcaption {
+  display: flex; gap: 1rem; justify-content: center; align-items: center;
+  flex-wrap: wrap; margin-top: .5rem; color: var(--base-dark); font-size: .95rem;
 }
-.artwork figcaption { margin-top: .4rem; font-size: .9rem; color: var(--ink-muted); }
+.artwork__boxes { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.box { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.box--pass { stroke: var(--green); stroke-opacity: .6; }
+.box--flag { stroke: #c28a00; stroke-width: 3; }
+.box--fail { stroke: var(--red); stroke-width: 3; }
+.box.is-active { stroke: var(--blue-dark); stroke-width: 3; stroke-opacity: 1; fill: rgba(255, 190, 46, .25); }
 
-/* --- results: Jenny's printed checklist, on screen --- */
-.placeholder { color: var(--ink-muted); }
+/* --- the checklist ---------------------------------------------------------- */
 
-.verdict {
-  display: flex; align-items: baseline; gap: .8rem; flex-wrap: wrap;
-  padding: 1rem 1.15rem; border-radius: var(--radius); margin-bottom: 1.2rem;
-  border-left: 8px solid;
+.verdict { margin-bottom: 1rem; }
+.verdict .usa-alert__heading { font-size: 1.4rem; }
+
+.layer-heading {
+  font-size: .85rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--base-dark); margin: 1.5rem 0 .25rem;
 }
-.verdict__label { font-size: 1.45rem; font-weight: 700; }
-.verdict__meta { color: var(--ink-muted); font-size: .95rem; }
-.verdict--pass { background: var(--success-bg); border-color: var(--success); }
-.verdict--flag { background: var(--warn-bg);    border-color: var(--warn); }
-.verdict--fail { background: var(--error-bg);   border-color: var(--error); }
-
 .checks { list-style: none; margin: 0; padding: 0; }
 .check {
-  display: grid; grid-template-columns: auto 1fr; gap: .1rem .8rem;
-  padding: .9rem 0; border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: auto 1fr; gap: .1rem .75rem;
+  padding: .9rem .25rem; border-top: 1px solid var(--base-lighter); cursor: pointer;
 }
+.check:focus-visible { outline: .25rem solid #2491ff; outline-offset: 0; }
 .check__mark { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
-.check--pass .check__mark { color: var(--success); }
-.check--flag .check__mark { color: var(--warn); }
-.check--fail .check__mark { color: var(--error); }
+.check--pass .check__mark { color: var(--green-dark); }
+.check--flag .check__mark { color: var(--gold-dark); }
+.check--fail .check__mark { color: var(--red-dark); }
 
-.check__name { font-weight: 700; }
-.check__status {
-  font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  padding: .12rem .45rem; border-radius: 3px; margin-left: .55rem; vertical-align: .09em;
-}
-.check--pass .check__status { background: var(--success-bg); color: #0a5c13; }
-.check--flag .check__status { background: var(--warn-bg);    color: #6b4f20; }
-.check--fail .check__status { background: var(--error-bg);   color: #8b0707; }
-.check__advisory {
-  font-size: .78rem; color: var(--ink-muted); margin-left: .45rem;
-  font-style: italic; text-transform: none; letter-spacing: 0;
+.check__name { font-weight: 700; margin: 0; }
+.check__status { margin-left: .5rem; vertical-align: .1em; }
+.check--pass .check__status { background: var(--green-dark); }
+.check--flag .check__status { background: var(--gold); color: #1b1b1b; }
+.check--fail .check__status { background: var(--red-dark); }
+.check__advisory { font-size: .8rem; color: var(--base-dark); margin-left: .5rem; font-style: italic; }
+.check__source {
+  font-size: .8rem; margin-left: .5rem; padding: .1rem .4rem; border-radius: .125rem;
+  background: var(--blue-bg); color: var(--blue-dark);
 }
 
 .check__body { grid-column: 2; }
 .check__reason { margin: .25rem 0 0; }
-.check__values { margin: .45rem 0 0; font-size: .93rem; color: var(--ink-muted); }
+.check__values { margin: .4rem 0 0; font-size: .93rem; color: var(--base-dark); }
 .check__values dt { font-weight: 700; display: inline; }
 .check__values dd { display: inline; margin: 0 0 0 .3rem; }
 .check__values div { margin-bottom: .15rem; }
-.check__cite { margin: .4rem 0 0; font-size: .85rem; color: var(--ink-muted); }
+.check__cite { margin: .4rem 0 0; font-size: .85rem; color: var(--base-dark); }
 
-.diff { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--error);
-        padding: .55rem .7rem; margin: .5rem 0 0; font-size: .9rem; }
-
-.notes { margin-top: 1.3rem; padding-top: 1rem; border-top: 1px solid var(--line);
-         font-size: .93rem; color: var(--ink-muted); }
+.diff {
+  background: #fff; border: 1px solid var(--base-lighter); border-left: .25rem solid var(--red);
+  padding: .5rem .75rem; margin: .5rem 0 0; font-size: .93rem;
+}
+.notes {
+  margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--base-lighter);
+  font-size: .93rem; color: var(--base-dark);
+}
 .notes ul { margin: .35rem 0 0; padding-left: 1.2rem; }
 
-.print-hint { margin: 1rem 0 0; }
-
-.alert { padding: .9rem 1.1rem; border-radius: var(--radius); margin-bottom: 1.5rem;
-         border-left: 8px solid; }
-.alert--warn  { background: var(--warn-bg);  border-color: var(--warn); }
-.alert--error { background: var(--error-bg); border-color: var(--error); }
-.alert code { background: rgba(0,0,0,.06); padding: .05rem .3rem; border-radius: 3px; }
-
-footer { max-width: 1180px; margin: 0 auto; padding: 0 1.5rem 3rem;
-         color: var(--ink-muted); font-size: .9rem; }
-
-.visually-hidden {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-}
-
-
-/* --- batch ------------------------------------------------------------ */
-
-.modes { display: flex; gap: .4rem; margin-bottom: 1.4rem; }
-.mode {
-  font: inherit; font-weight: 700; cursor: pointer;
-  padding: .6rem 1.3rem; border-radius: var(--radius);
-  background: transparent; color: var(--primary);
-  border: 2px solid var(--primary);
-}
-.mode.is-active { background: var(--primary); color: #fff; }
-.mode:hover:not(.is-active) { background: #e6f1f8; }
-
-input[type="file"] { font: inherit; width: 100%; padding: .45rem 0; }
-
-.progress {
-  height: 1.1rem; background: #e6e6e6; border-radius: 999px;
-  overflow: hidden; margin: .7rem 0 .4rem;
-}
-.progress__bar { height: 100%; background: var(--primary); width: 0; transition: width .2s; }
-
-.summary { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0; }
-.pill {
-  padding: .3rem .8rem; border-radius: 999px; font-weight: 700; font-size: .92rem;
-}
-.pill--pass { background: var(--success-bg); color: #0a5c13; }
-.pill--flag { background: var(--warn-bg);    color: #6b4f20; }
-.pill--fail { background: var(--error-bg);   color: #8b0707; }
-.pill--none { background: #e6e6e6; color: var(--ink-muted); }
-
-.results { width: 100%; border-collapse: collapse; margin-top: .6rem; font-size: .95rem; }
-.results th, .results td {
-  text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--line);
-  vertical-align: top;
-}
-.results th { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em;
-              color: var(--ink-muted); }
-.results tbody tr.is-fail { background: #fdf4f2; }
-.results tbody tr.is-flag { background: #fdfaf0; }
-.results__verdict { font-weight: 700; white-space: nowrap; }
-.results__verdict--pass { color: #0a5c13; }
-.results__verdict--flag { color: #6b4f20; }
-.results__verdict--fail { color: #8b0707; }
-
-
-/* --- evidence boxes, layers, triage ------------------------------------ */
-
-.artwork__boxes { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.box { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.box--pass { stroke: var(--success); stroke-opacity: .55; }
-.box--flag { stroke: #c28a00; stroke-width: 3; }
-.box--fail { stroke: var(--error); stroke-width: 3; }
-.box.is-active { stroke: #1a4480; stroke-width: 3; stroke-opacity: 1; fill: rgba(250, 206, 0, .22); }
-.artwork figcaption { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-.toggle { display: inline-flex; gap: .35rem; align-items: center; font-weight: 400; margin: 0; }
-
-.layer-heading {
-  font-size: .85rem; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--ink-muted); margin: 1.4rem 0 .2rem;
-}
-.check { cursor: pointer; }
-.check:focus-visible { outline: 4px solid #face00; outline-offset: 2px; }
-.check__source {
-  font-size: .78rem; margin-left: .45rem; padding: .1rem .4rem; border-radius: 3px;
-  background: #e7f2f8; color: var(--primary-dark);
-}
-.triage-line { margin: -.4rem 0 1rem; font-size: .95rem; }
+.triage-line { margin: 0 0 1rem; font-size: .95rem; }
 .pending-line {
-  display: flex; align-items: center; gap: .5rem; margin: -.4rem 0 1rem;
-  padding: .55rem .8rem; background: #e7f2f8; border-radius: var(--radius);
-  font-size: .95rem; color: var(--primary-dark);
+  display: flex; align-items: center; gap: .5rem; margin: 0 0 1rem;
+  padding: .6rem .8rem; background: var(--blue-bg); border-left: .25rem solid var(--blue);
+  font-size: .95rem; color: var(--blue-dark);
 }
 .spinner {
   width: 1rem; height: 1rem; flex: none; border-radius: 50%;
-  border: 3px solid rgba(26, 68, 128, .25); border-top-color: var(--primary-dark);
+  border: 3px solid rgba(26, 68, 128, .25); border-top-color: var(--blue-dark);
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
-.assist-status { margin-top: .3rem; }
+
+.print-hint { margin: 1rem 0 0; }
+
+/* --- batch -------------------------------------------------------------------- */
+
+.progress {
+  height: 1.1rem; background: var(--base-lighter); border-radius: 999px;
+  overflow: hidden; margin: 1.5rem 0 .4rem;
+}
+.progress__bar { height: 100%; background: var(--blue); width: 0; transition: width .2s; }
+.progress__label { margin: 0; color: var(--base-dark); }
+
+.summary { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1.5rem 0 1rem; }
+.tag--pass { background: var(--green-dark); }
+.tag--flag { background: var(--gold); color: #1b1b1b; }
+.tag--fail { background: var(--red-dark); }
+.tag--error, .tag--none { background: var(--base-dark); }
+
+.results { margin-top: 1rem; }
+.results tbody tr.is-fail > * { background: #fdf4f2; }
+.results tbody tr.is-flag > * { background: #fdfaf0; }
+.results__verdict { font-weight: 700; white-space: nowrap; }
+.results__verdict--pass { color: var(--green-dark); }
+.results__verdict--flag { color: var(--gold-dark); }
+.results__verdict--fail { color: var(--red-dark); }
 .results__triage { white-space: nowrap; }
 
-/* --- print: the checklist, the artwork, and nothing else --------------- */
+.assist-status { font-size: .95rem; }
+
+/* --- print: the checklist, the artwork, and nothing else ------------------ */
 
 @media print {
-  body { background: #fff; font-size: 12pt; }
-  .banner, .modes, .lede, #panel-single > .panel:first-child, .print-hint,
-  #panel-batch, footer, .btn { display: none !important; }
-  .layout { display: block; }
+  html { font-size: 75%; }
+  .usa-skipnav, .usa-site-alert, .usa-header, .usa-intro, .usa-button-group,
+  #panel-single > div:first-child, .print-hint, #panel-batch, .usa-footer,
+  .usa-button, #boxes-toggle-wrap { display: none !important; }
+  #panel-single > div { width: 100%; max-width: 100%; flex: none; }
   .panel { border: none; padding: 0; }
-  .artwork { break-inside: avoid; }
+  .artwork { break-inside: avoid; background: none; }
   .artwork img { max-height: 3.2in; }
-  .verdict { border: 1px solid #000; }
   .check { break-inside: avoid; }
   .check__status { border: 1px solid #000; }
-  .toggle { display: none; }
-  h1::after { content: " (prototype, assists review only)"; font-weight: 400; font-size: .7em; }
+  h1::after { content: " (prototype, assists review only)"; font-weight: 400; font-size: .6em; }
 }

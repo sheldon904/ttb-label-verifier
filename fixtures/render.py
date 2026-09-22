@@ -43,6 +43,16 @@ _FONT_CANDIDATES = {
         "C:/Windows/Fonts/georgiab.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
     ],
+    "times": [
+        "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+        "C:/Windows/Fonts/times.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+    ],
+    "times-bold": [
+        "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+        "C:/Windows/Fonts/timesbd.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+    ],
 }
 
 
@@ -89,14 +99,14 @@ def _centered_wrapped(draw, y: int, text: str, f, max_w: int, fill=INK) -> int:
 
 
 def _draw_warning(draw, y: int, text: str, size: int, prefix_bold: bool, max_w: int,
-                  family: str = "", ink=INK) -> int:
+                  family: str = "", ink=INK, margin: int = MARGIN) -> int:
     """Draw the warning with its prefix in a distinct weight.
 
     Tokenizes into (word, font) pairs so the prefix can carry real bold weight
     while the body stays regular, then wraps across that mixed run.
     """
-    regular = font("serif" if family == "serif" else "regular", size)
-    bold = font("serif-bold" if family == "serif" else "bold", size)
+    regular = font(family or "regular", size)
+    bold = font(f"{family}-bold" if family else "bold", size)
     prefix = "GOVERNMENT WARNING:"
 
     tokens: list[tuple[str, ImageFont.FreeTypeFont]] = []
@@ -113,7 +123,7 @@ def _draw_warning(draw, y: int, text: str, size: int, prefix_bold: bool, max_w: 
     line_w = 0.0
 
     def flush(cur_y: int, run) -> int:
-        x = MARGIN
+        x = margin
         for word, wf in run:
             draw.text((x, cur_y), word, font=wf, fill=ink)
             x += _text_w(draw, word, wf) + space
@@ -186,9 +196,60 @@ def render_modern(spec: LabelSpec) -> Image.Image:
     return img
 
 
+TAN, BROWN = (236, 222, 190), (60, 30, 10)
+NIGHT, GOLD = (20, 30, 60), (230, 210, 150)
+
+
+def render_stress(spec: LabelSpec) -> Image.Image:
+    """The label shapes an outside reviewer drew to test the tool.
+
+    Centred type on a taller card, with the options that broke an earlier
+    version: a brand stacked over two lines in two sizes, light type on a
+    dark card, a scan several times the usual resolution and the net contents
+    on the alcohol statement's line.
+    """
+    s = spec.scale
+    width, height = 900 * s, 1300 * s
+    bg, fg = (NIGHT, GOLD) if spec.dark else (TAN, BROWN)
+    regular, bold = ("times", "times-bold") if spec.dark else ("regular", "bold")
+    img = Image.new("RGB", (width, height), bg)
+    draw = ImageDraw.Draw(img)
+
+    def centred(y: int, text: str, weight: str, size: int) -> int:
+        f = font(weight, size * s)
+        draw.text(((width - _text_w(draw, text, f)) / 2, y), text, font=f, fill=fg)
+        return y + (size + 40) * s
+
+    words = spec.brand_name.split()
+    y = 80 * s
+    if spec.brand_split:
+        y = centred(y, " ".join(words[:spec.brand_split]), bold, 110)
+        y = centred(y, " ".join(words[spec.brand_split:]), bold, 80)
+    else:
+        y = centred(y, spec.brand_name, bold, 80)
+    y = centred(y, spec.class_type, regular, 40)
+    if spec.statement_one_line and spec.net_contents:
+        y = centred(y, f"{spec.net_contents}   {spec.alcohol_statement}", regular, 44)
+    else:
+        y = centred(y, spec.alcohol_statement, regular, 44)
+        if spec.net_contents:
+            y = centred(y, spec.net_contents, regular, 44)
+    for text in (spec.bottler_name, spec.bottler_address, spec.country_of_origin):
+        if text:
+            y = centred(y, text, regular, 26)
+
+    if spec.warning_text:
+        _draw_warning(draw, y + 60 * s, spec.warning_text, 22 * s, spec.warning_prefix_bold,
+                      width - 140 * s, family="times" if spec.dark else "", ink=fg,
+                      margin=70 * s)
+    return img
+
+
 def render_label(spec: LabelSpec) -> Image.Image:
     if spec.template == "modern":
         return render_modern(spec)
+    if spec.template == "stress":
+        return render_stress(spec)
     img = Image.new("RGB", (W, H), CREAM)
     draw = ImageDraw.Draw(img)
     max_w = W - 2 * MARGIN

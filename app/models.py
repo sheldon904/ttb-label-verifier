@@ -51,6 +51,9 @@ class LabelExtraction(BaseModel):
 
     brand_name: str | None = None
     class_type: str | None = None
+    # The line after the class/type. If the brand is stacked over two lines
+    # the "class" line is its second half and this is the real designation.
+    class_type_next: str | None = None
     alcohol_statement: str | None = None  # verbatim, e.g. "45% Alc./Vol. (90 Proof)"
     net_contents: str | None = None
     bottler_name: str | None = None

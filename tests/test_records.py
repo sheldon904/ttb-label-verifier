@@ -90,5 +90,5 @@ def test_malformed_json_is_reported_clearly():
 
 def test_bom_prefixed_csv_from_excel_is_handled():
     """Excel writes a UTF-8 BOM, which otherwise corrupts the first header."""
-    p = parse_records("﻿cola_id,brand\n24-001,Old Tom\n".encode("utf-8"), "x.csv")
+    p = parse_records("﻿cola_id,brand\n24-001,Old Tom\n".encode(), "x.csv")
     assert p.records[0].cola_id == "24-001"

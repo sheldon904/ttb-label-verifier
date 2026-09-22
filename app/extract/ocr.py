@@ -15,6 +15,8 @@ Reports observations only. Verdicts are the rule engine's job.
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 import time
 
 import numpy as np
@@ -65,20 +67,62 @@ DEGRADED_CONFIDENCE = 0.0
 
 TESSERACT_CONFIG = "--oem 3 --psm 4"
 
+# Where the Windows installer puts the binary when it is not on PATH.
+_WINDOWS_TESSERACT = (
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+)
+
+
+def resolve_tesseract(explicit: str | None) -> str | None:
+    """Pick the Tesseract binary: explicit setting, then PATH, then the
+    Windows default install location. Returns None when nothing is found,
+    and the first extraction then raises a readable error."""
+    if explicit:
+        return explicit
+    if shutil.which("tesseract"):
+        return None  # pytesseract's default already works
+    for candidate in _WINDOWS_TESSERACT:
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
 
 class OcrExtractor:
     name = "ocr:tesseract"
 
-    def __init__(self, tesseract_config: str = TESSERACT_CONFIG) -> None:
+    def __init__(self, tesseract_config: str = TESSERACT_CONFIG,
+                 tesseract_cmd: str | None = None) -> None:
         self._config = tesseract_config
+        resolved = resolve_tesseract(tesseract_cmd)
+        if resolved:
+            pytesseract.pytesseract.tesseract_cmd = resolved
 
     # --- low level -------------------------------------------------------
 
-    def _words(self, image: Image.Image) -> list[Word]:
-        data = pytesseract.image_to_data(
-            image, config=self._config, output_type=pytesseract.Output.DICT
-        )
+    def _read(self, image: Image.Image) -> tuple[list[Word], int]:
+        """One Tesseract pass: the words it resolved, and a count of the
+        text-like regions it saw but could not.
+
+        The count is how "there is small print here we cannot read" is
+        distinguished from "there is nothing here". Without it, an
+        out-of-focus photo of a perfectly compliant label would be reported
+        as a missing warning. It comes from the same pass as the words: a
+        second run over the same image would double the latency of every
+        label whose warning was not found.
+        """
+        try:
+            data = pytesseract.image_to_data(
+                image, config=self._config, output_type=pytesseract.Output.DICT
+            )
+        except pytesseract.TesseractNotFoundError as exc:
+            raise RuntimeError(
+                "Tesseract OCR is not installed or not on PATH. Install it (brew install "
+                "tesseract, apt install tesseract-ocr, or the Windows installer) or set "
+                "TESSERACT_CMD to the binary."
+            ) from exc
         words: list[Word] = []
+        unresolved = 0
         for i, text in enumerate(data["text"]):
             text = (text or "").strip()
             if not text:
@@ -88,6 +132,8 @@ class OcrExtractor:
             except (TypeError, ValueError):
                 conf = -1.0
             if conf < DETECTION_CONF:
+                if conf >= 0:
+                    unresolved += 1
                 continue
             words.append(Word(
                 text=text,
@@ -97,27 +143,7 @@ class OcrExtractor:
                 line_key=(int(data["block_num"][i]), int(data["par_num"][i]),
                           int(data["line_num"][i])),
             ))
-        return words
-
-    def _low_confidence_regions(self, image: Image.Image) -> int:
-        """Count text-like detections Tesseract saw but could not resolve.
-
-        This is how "there is small print here we cannot read" is distinguished
-        from "there is nothing here". Without it, an out-of-focus photo of a
-        perfectly compliant label would be reported as a missing warning.
-        """
-        data = pytesseract.image_to_data(
-            image, config=self._config, output_type=pytesseract.Output.DICT
-        )
-        n = 0
-        for i, text in enumerate(data["text"]):
-            try:
-                conf = float(data["conf"][i])
-            except (TypeError, ValueError):
-                continue
-            if 0 <= conf < DETECTION_CONF and (text or "").strip():
-                n += 1
-        return n
+        return words, unresolved
 
     # --- typography ------------------------------------------------------
 
@@ -186,7 +212,7 @@ class OcrExtractor:
         started = time.perf_counter()
         image = prepared.image
 
-        words = self._words(image)
+        words, unresolved = self._read(image)
         lines = layout.build_lines(words)
 
         warning_text, warning_block = layout.extract_warning(lines)
@@ -219,7 +245,7 @@ class OcrExtractor:
             glyph_px = min(ln.height for ln in warning_block)
             legible = block_conf >= LEGIBLE_CONF and glyph_px >= MIN_LEGIBLE_GLYPH_PX
             legibility = "read" if legible else "illegible"
-        elif self._low_confidence_regions(image) > 0:
+        elif unresolved > 0:
             legibility = "illegible"
         else:
             legibility = "absent"

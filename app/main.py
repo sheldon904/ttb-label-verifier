@@ -7,17 +7,19 @@ progressive disclosure. It is a form and a checklist.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import REPO_ROOT, load_settings
-from app.extract.imageprep import UnreadableImageError
 from app.extract.factory import build_extractor
+from app.extract.imageprep import UnreadableImageError
 from app.extract.stub import StubExtractionMissing
 from app.models import ApplicationRecord
 from app.pipeline import ObservationCache, review_label
@@ -25,31 +27,59 @@ from app.records import parse_records
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
+SAMPLE_BATCH = REPO_ROOT / "fixtures" / "records" / "batch-sample.csv"
 
 # The three seeded demos. A grader rarely arrives holding label images, so the
 # tool has to be able to demonstrate itself: one compliant label, one with the
 # defect Jenny described, one with a self-contradictory alcohol statement.
 EXAMPLE_IDS = ("clean_01", "warning_title_case", "proof_inconsistent")
 
+# Fixture ids are file stems. Anything else is not an example, whatever the
+# filesystem might make of it.
+_EXAMPLE_ID = re.compile(r"^[a-z0-9_]{1,64}$")
+
 settings = load_settings()
 cache = ObservationCache()
 
-app = FastAPI(title="TTB Label Verification Prototype", docs_url=None, redoc_url=None)
+app = FastAPI(
+    title="TTB Label Verification Prototype",
+    description=(
+        "Checks alcohol beverage label artwork against the COLA application record. "
+        "Local OCR, deterministic rules, nothing stored, nothing leaves the machine."
+    ),
+    version="0.9",
+)
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
 _extractor = None
+_gate: asyncio.Semaphore | None = None
 
 
 def get_extractor():
-    """Built lazily so the page still loads (and explains itself) without a key."""
+    """Built lazily so the page still loads (and explains itself) if OCR is misconfigured."""
     global _extractor
     if _extractor is None:
         _extractor = build_extractor(settings)
     return _extractor
 
 
+def review_gate() -> asyncio.Semaphore:
+    """Bounds how many labels are in the OCR thread pool at once.
+
+    The browser fans a batch out over the single-label endpoint, so this is the
+    server-side half of MAX_BATCH_CONCURRENCY: however many tabs are open, no
+    more than this many Tesseract processes run at a time.
+    """
+    global _gate
+    if _gate is None:
+        _gate = asyncio.Semaphore(max(1, settings.max_batch_concurrency))
+    return _gate
+
+
 def load_example(example_id: str) -> dict:
+    if not _EXAMPLE_ID.match(example_id):
+        raise HTTPException(404, "That example is not available.")
     path = FIXTURE_DIR / f"{example_id}.truth.json"
     if not path.is_file():
         raise HTTPException(404, "That example is not available.")
@@ -63,7 +93,7 @@ async def healthz() -> dict:
     return {"ok": True, "extractor": settings.extractor}
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def index(request: Request):
     examples = []
     for eid in EXAMPLE_IDS:
@@ -75,18 +105,38 @@ async def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "examples": examples,
         "extractor": settings.extractor,
+        "batch_concurrency": max(1, settings.max_batch_concurrency),
+        "sample_batch": SAMPLE_BATCH.is_file(),
     })
 
 
 @app.get("/examples/{example_id}/image")
 async def example_image(example_id: str):
-    from fastapi.responses import FileResponse
     return FileResponse(load_example(example_id)["image_path"], media_type="image/png")
+
+
+@app.get("/examples/batch")
+async def example_batch():
+    """The committed sample batch: records plus the fixture images they refer to.
+
+    Lets a reviewer try batch mode without first assembling a records file and
+    a folder of artwork. The browser fetches each image and runs the batch the
+    same way it would with uploaded files.
+    """
+    if not SAMPLE_BATCH.is_file():
+        raise HTTPException(404, "No sample batch is available.")
+    parsed = parse_records(SAMPLE_BATCH.read_bytes(), SAMPLE_BATCH.name)
+    return JSONResponse({
+        "records": [r.model_dump() for r in parsed.records],
+        "images": parsed.images,
+        "errors": parsed.errors,
+    })
 
 
 async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
     try:
-        bundle = await review_label(raw, record, get_extractor(), cache=cache)
+        async with review_gate():
+            bundle = await review_label(raw, record, get_extractor(), cache=cache)
     except UnreadableImageError as exc:
         raise HTTPException(400, str(exc)) from exc
     except StubExtractionMissing as exc:
@@ -112,6 +162,17 @@ async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
     })
 
 
+def _parse_abv(value: str) -> float | None:
+    """'45', '45.0', '45%', '45 %' -> 45.0. Agents type what the form shows."""
+    cleaned = value.replace("%", "").strip()
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        raise HTTPException(400, "Alcohol content must be a number, for example 45 or 45.5.") from None
+
+
 @app.post("/api/review")
 async def api_review(
     image: UploadFile,
@@ -129,18 +190,16 @@ async def api_review(
         raise HTTPException(
             413,
             f"That image is {len(raw) / 1e6:.1f} MB. The limit is "
-            f"{settings.max_upload_bytes / 1e6:.0f} MB — please upload a smaller file.",
+            f"{settings.max_upload_bytes / 1e6:.0f} MB. Please upload a smaller file.",
         )
-    try:
-        abv = float(alcohol_content_pct) if alcohol_content_pct.strip() else None
-    except ValueError:
-        raise HTTPException(400, "Alcohol content must be a number, for example 45 or 45.5.") from None
+    if not brand_name.strip():
+        raise HTTPException(400, "Enter the brand name from the application.")
 
     record = ApplicationRecord(
         cola_id=cola_id.strip() or "UNSPECIFIED",
         brand_name=brand_name.strip(),
         class_type=class_type.strip() or None,
-        alcohol_content_pct=abv,
+        alcohol_content_pct=_parse_abv(alcohol_content_pct),
         net_contents=net_contents.strip() or None,
         bottler_name=bottler_name.strip() or None,
         bottler_address=bottler_address.strip() or None,

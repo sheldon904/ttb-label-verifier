@@ -13,7 +13,6 @@ from app.rules.fields import (
 )
 from app.rules.warning import STATUTORY_WARNING, check_warning_text
 
-
 # --- Dave Morrison: "obviously the same thing. You need judgment." ---------
 
 def test_brand_case_difference_passes():
@@ -72,15 +71,15 @@ def test_net_contents_unit_normalization():
 # --- end to end through the engine ----------------------------------------
 
 def _record(**kw):
-    base = dict(cola_id="TEST-1", brand_name="Old Tom Distillery",
-                alcohol_content_pct=45.0, net_contents="750 mL")
+    base = {"cola_id": "TEST-1", "brand_name": "Old Tom Distillery",
+                "alcohol_content_pct": 45.0, "net_contents": "750 mL"}
     return ApplicationRecord(**(base | kw))
 
 
 def _extraction(**kw):
-    base = dict(brand_name="OLD TOM DISTILLERY", alcohol_statement="45% Alc./Vol. (90 Proof)",
-                net_contents="750 mL", warning_text=STATUTORY_WARNING,
-                warning_prefix_is_bold=True)
+    base = {"brand_name": "OLD TOM DISTILLERY", "alcohol_statement": "45% Alc./Vol. (90 Proof)",
+                "net_contents": "750 mL", "warning_text": STATUTORY_WARNING,
+                "warning_prefix_is_bold": True}
     return LabelExtraction(**(base | kw))
 
 

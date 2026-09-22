@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import statistics
 from dataclasses import dataclass, field
 
 VERDICTS = ("pass", "flag", "fail")
@@ -24,13 +23,6 @@ def classify_miss(expected: str, actual: str) -> str:
         return "unsafe" if actual == "fail" and expected == "pass" else "cautious"
     return "unsafe"
 
-# Approximate published rates, USD per million tokens. VERIFY BEFORE QUOTING --
-# pricing changes and a stale number in a submission is worse than no number.
-PRICING = {
-    "claude-haiku-4-5-20251001": (1.00, 5.00),
-    "claude-sonnet-5": (3.00, 15.00),
-}
-
 
 @dataclass
 class FixtureOutcome:
@@ -42,8 +34,6 @@ class FixtureOutcome:
     actual_failing_fields: list[str]
     field_hits: dict[str, bool]
     total_ms: int
-    input_tokens: int
-    output_tokens: int
     error: str | None = None
 
     @property
@@ -89,7 +79,7 @@ class EvalSummary:
         lat = self.latencies()
         if not lat:
             return 0
-        idx = min(int(round(p / 100 * (len(lat) - 1))), len(lat) - 1)
+        idx = min(round(p / 100 * (len(lat) - 1)), len(lat) - 1)
         return lat[idx]
 
     def confusion(self) -> dict[tuple[str, str], int]:
@@ -106,26 +96,12 @@ class EvalSummary:
                 totals.setdefault(k, []).append(v)
         return {k: sum(v) / len(v) for k, v in sorted(totals.items()) if v}
 
-    def mean_tokens(self) -> tuple[float, float]:
-        ok = [o for o in self.outcomes if o.error is None]
-        if not ok:
-            return (0.0, 0.0)
-        return (statistics.mean(o.input_tokens for o in ok),
-                statistics.mean(o.output_tokens for o in ok))
-
-    def cost_per_label(self) -> float | None:
-        rates = PRICING.get(self.model)
-        if not rates:
-            return None
-        inp, out = self.mean_tokens()
-        return (inp / 1e6) * rates[0] + (out / 1e6) * rates[1]
-
 
 def render(summary: EvalSummary) -> str:
     L: list[str] = []
     a = L.append
 
-    a(f"# Evaluation report — `{summary.model}`\n")
+    a(f"# Evaluation report: `{summary.model}`\n")
     a(f"**{summary.n} fixtures · {summary.accuracy:.1%} verdict accuracy**\n")
 
     a("## Outcome safety\n")
@@ -156,7 +132,8 @@ def render(summary: EvalSummary) -> str:
     if summary.wall_clock_s:
         a(f"Throughput: **{summary.throughput_per_min:.0f} labels/min** "
           f"({summary.n} in {summary.wall_clock_s:.1f}s). A 300-label batch would take "
-          f"about **{300 / max(summary.throughput_per_min, 1e-9):.1f} minutes**.\n")
+          f"about **{300 / max(summary.throughput_per_min, 1e-9):.1f} minutes** at this "
+          "concurrency.\n")
 
     a("## Verdict confusion matrix\n")
     m = summary.confusion()
@@ -174,15 +151,9 @@ def render(summary: EvalSummary) -> str:
         a(f"| `{k}` | {v:.0%} |")
     a("")
 
-    inp, out = summary.mean_tokens()
-    cost = summary.cost_per_label()
     a("## Cost\n")
-    a(f"Mean {inp:.0f} input / {out:.0f} output tokens per label.")
-    if cost is not None:
-        a(f" Approximately **${cost:.4f} per label**, ${cost * 150_000:,.0f} "
-          f"at TTB's stated 150 000 applications per year.")
-        a("\n_Rates are approximate and must be re-checked before being quoted._")
-    a("")
+    a("Nothing per label. There is no model, no API and no token. The only cost is "
+      "local CPU time, which the latency table above already states.\n")
 
     misses = [o for o in summary.outcomes if not o.verdict_correct]
     a(f"## Misses ({len(misses)})\n")

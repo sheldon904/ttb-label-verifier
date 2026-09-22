@@ -14,7 +14,6 @@ from app.rules.fields import (
 )
 from app.rules.warning import STATUTORY_WARNING
 
-
 # --- class / type -----------------------------------------------------------
 
 def test_class_type_case_difference_passes():

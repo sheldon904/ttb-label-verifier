@@ -10,18 +10,23 @@
   var filename = document.getElementById("filename");
   var result = document.getElementById("result");
   var submit = document.getElementById("submit");
+  var artwork = document.getElementById("artwork");
+  var artworkImg = document.getElementById("artwork-img");
+  var artworkCaption = document.getElementById("artwork-caption");
+  var printButton = document.getElementById("print");
 
   var FIELD_LABELS = {
     brand_name: "Brand name",
     class_type: "Class / type",
     alcohol_content: "Alcohol content",
+    alcohol_format: "Alcohol statement wording",
     proof_consistency: "Proof statement",
     net_contents: "Net contents",
     bottler_name: "Bottler / producer",
     bottler_address: "Bottler address",
     country_of_origin: "Country of origin",
     government_warning: "Government warning",
-    warning_typography: "Warning legibility"
+    warning_typography: "Warning type and size"
   };
 
   var MARKS = { pass: "✓", flag: "⚠", fail: "✗" };
@@ -31,7 +36,7 @@
      label in, and the same one as the paper checklist it replaces. Within the
      list, unresolved items still sort to the top. */
   var FIELD_ORDER = [
-    "brand_name", "class_type", "alcohol_content", "proof_consistency",
+    "brand_name", "class_type", "alcohol_content", "alcohol_format", "proof_consistency",
     "net_contents", "bottler_name", "bottler_address", "country_of_origin",
     "government_warning", "warning_typography"
   ];
@@ -51,6 +56,24 @@
   function setBusy(busy) {
     submit.disabled = busy;
     submit.textContent = busy ? "Checking…" : "Check this label";
+  }
+
+  /* --- artwork preview -------------------------------------------------
+     Jenny checks "with my eyes". The checklist is only useful next to the
+     thing it describes, so whatever is being checked is shown beside it. */
+
+  var previewUrl = null;
+
+  function showArtwork(src, caption) {
+    if (previewUrl) { URL.revokeObjectURL(previewUrl); previewUrl = null; }
+    artworkImg.src = src;
+    artworkCaption.textContent = caption || "";
+    artwork.hidden = false;
+  }
+
+  function showArtworkFile(file) {
+    previewUrl = URL.createObjectURL(file);
+    showArtwork(previewUrl, file.name);
   }
 
   /* --- file selection ------------------------------------------------ */
@@ -78,15 +101,19 @@
   fileInput.addEventListener("change", showFilename);
 
   function showFilename() {
-    filename.textContent = fileInput.files.length
-      ? "Selected: " + fileInput.files[0].name
-      : "";
+    if (fileInput.files.length) {
+      filename.textContent = "Selected: " + fileInput.files[0].name;
+      showArtworkFile(fileInput.files[0]);
+    } else {
+      filename.textContent = "";
+    }
   }
 
   /* --- rendering ------------------------------------------------------ */
 
   function renderError(message) {
     result.innerHTML = "";
+    printButton.hidden = true;
     var box = el("div", "alert alert--error");
     box.setAttribute("role", "alert");
     box.appendChild(el("strong", null, "Could not check this label. "));
@@ -119,7 +146,9 @@
 
     var body = el("div", "check__body");
 
-    if (check.field === "government_warning" && check.verdict !== "pass") {
+    var wordingDiff = check.field === "government_warning" && check.verdict === "fail"
+      && check.reason.indexOf("statutory wording: ") !== -1;
+    if (wordingDiff) {
       var diff = renderWarningDiff(check.reason);
       body.appendChild(el("p", "check__reason",
         diff ? check.reason.split(": ")[0] + "." : check.reason));
@@ -176,7 +205,11 @@
       notes.appendChild(ul);
       result.appendChild(notes);
     }
+
+    printButton.hidden = false;
   }
+
+  printButton.addEventListener("click", function () { window.print(); });
 
   /* --- requests -------------------------------------------------------- */
 
@@ -210,7 +243,9 @@
     document.querySelectorAll("[data-example]"),
     function (btn) {
       btn.addEventListener("click", function () {
-        send("/api/review/example/" + btn.getAttribute("data-example"), { method: "POST" });
+        var id = btn.getAttribute("data-example");
+        showArtwork("/examples/" + id + "/image", btn.textContent.trim());
+        send("/api/review/example/" + id, { method: "POST" });
       });
     }
   );
@@ -222,15 +257,14 @@
    expire -- which for a prototype that keeps nothing is the right trade. The
    cost is that a page refresh loses progress; that is stated in the README.
 
-   The browser holds the concurrency limit. Server-side the work runs on a
-   thread pool, so these requests genuinely run in parallel: measured 3.5x on
-   eight cores, which takes a 300-label batch from about eight minutes to
-   under three. */
+   The browser holds one half of the concurrency limit and the server holds
+   the other: the page reads MAX_BATCH_CONCURRENCY from the server so the two
+   agree, and the server's semaphore caps the total across every open tab.
+   Server-side the work runs on a thread pool, so these requests genuinely run
+   in parallel. */
 
 (function () {
   "use strict";
-
-  var CONCURRENCY = 8;
 
   var modeSingle = document.getElementById("mode-single");
   var modeBatch = document.getElementById("mode-batch");
@@ -239,10 +273,13 @@
   var recordsInput = document.getElementById("batch-records");
   var imagesInput = document.getElementById("batch-images");
   var runButton = document.getElementById("batch-run");
+  var sampleButton = document.getElementById("batch-sample");
   var statusBox = document.getElementById("batch-status");
   var resultsBox = document.getElementById("batch-results");
 
   if (!modeBatch) return;
+
+  var CONCURRENCY = parseInt(runButton.getAttribute("data-concurrency"), 10) || 4;
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -270,8 +307,14 @@
     statusBox.appendChild(box);
   }
 
-  /* Match an image to a record by looking for the COLA ID in the file name.
-     Longest ID first, so "24-0010" is not claimed by "24-001". */
+  function setRunning(running) {
+    runButton.disabled = running;
+    if (sampleButton) sampleButton.disabled = running;
+  }
+
+  /* Match an image to a record: first by the file name the records declare,
+     then by looking for the COLA ID in the file name. Longest ID first, so
+     "24-0010" is not claimed by "24-001". */
   function matchImages(records, declared, files) {
     var ids = records.map(function (r) { return r.cola_id; })
                      .sort(function (a, b) { return b.length - a.length; });
@@ -281,7 +324,7 @@
     Array.prototype.forEach.call(files, function (file) {
       var name = file.name.toLowerCase();
       for (var id in declared) {
-        if (declared[id] && declared[id].toLowerCase() === file.name.toLowerCase()) {
+        if (declared[id] && declared[id].toLowerCase() === name) {
           if (!byId[id]) { byId[id] = file; return; }
         }
       }
@@ -346,6 +389,25 @@
     return Promise.all(chains).then(function () { return results; });
   }
 
+  var VERDICT_LABEL = { pass: "Pass", flag: "Review", fail: "Fail", error: "Not checked" };
+
+  var FIELD_NAMES = {
+    brand_name: "brand name", class_type: "class/type", alcohol_content: "alcohol content",
+    alcohol_format: "alcohol wording", proof_consistency: "proof statement",
+    net_contents: "net contents", bottler_name: "bottler", bottler_address: "bottler address",
+    country_of_origin: "country of origin", government_warning: "government warning",
+    warning_typography: "warning type"
+  };
+
+  function findingsOf(r) {
+    if (r.error) return r.error;
+    var bad = (r.checks || []).filter(function (c) { return c.verdict !== "pass"; });
+    if (!bad.length) return "All checks passed";
+    return bad.map(function (c) {
+      return (FIELD_NAMES[c.field] || c.field) + (c.verdict === "fail" ? " (fail)" : " (review)");
+    }).join(", ");
+  }
+
   function renderResults(rows, elapsedMs) {
     resultsBox.innerHTML = "";
 
@@ -392,25 +454,6 @@
     resultsBox.appendChild(table);
   }
 
-  var VERDICT_LABEL = { pass: "Pass", flag: "Review", fail: "Fail", error: "Not checked" };
-
-  var FIELD_NAMES = {
-    brand_name: "brand name", class_type: "class/type", alcohol_content: "alcohol content",
-    proof_consistency: "proof statement", net_contents: "net contents",
-    bottler_name: "bottler", bottler_address: "bottler address",
-    country_of_origin: "country of origin", government_warning: "government warning",
-    warning_typography: "warning legibility"
-  };
-
-  function findingsOf(r) {
-    if (r.error) return r.error;
-    var bad = (r.checks || []).filter(function (c) { return c.verdict !== "pass"; });
-    if (!bad.length) return "All checks passed";
-    return bad.map(function (c) {
-      return (FIELD_NAMES[c.field] || c.field) + (c.verdict === "fail" ? " (fail)" : " (review)");
-    }).join(", ");
-  }
-
   function downloadCsv(rows) {
     var head = ["cola_id", "verdict", "elapsed_ms", "findings"];
     var lines = [head.join(",")];
@@ -430,33 +473,10 @@
     URL.revokeObjectURL(url);
   }
 
-  runButton.addEventListener("click", async function () {
-    resultsBox.innerHTML = "";
-    if (!recordsInput.files.length) { note("Choose a records file first.", "error"); return; }
-    if (!imagesInput.files.length) { note("Choose the label images to check.", "error"); return; }
-
-    runButton.disabled = true;
-    note("Reading application records…");
-
-    var body = new FormData();
-    body.append("records", recordsInput.files[0]);
-
-    var parsed;
-    try {
-      var response = await fetch("/api/batch/records", { method: "POST", body: body });
-      parsed = await response.json();
-      if (!response.ok) {
-        note(parsed.detail || "Could not read that records file.", "error");
-        runButton.disabled = false;
-        return;
-      }
-    } catch (err) {
-      note("Could not reach the server.", "error");
-      runButton.disabled = false;
-      return;
-    }
-
-    var matched = matchImages(parsed.records, parsed.images || {}, imagesInput.files);
+  /* Shared by the upload path and the sample path: parsed records plus a list
+     of File objects, in; a rendered table, out. */
+  async function runBatch(parsed, files) {
+    var matched = matchImages(parsed.records, parsed.images || {}, files);
     var work = parsed.records
       .filter(function (r) { return matched.byId[r.cola_id]; })
       .map(function (r) { return { record: r, file: matched.byId[r.cola_id] }; });
@@ -474,7 +494,6 @@
     if (!work.length) {
       note("No images could be matched to a record. Image file names need to contain "
            + "the COLA ID, or the records file needs an image column.", "error");
-      runButton.disabled = false;
       return;
     }
 
@@ -506,6 +525,60 @@
     }
 
     renderResults(rows, elapsed);
-    runButton.disabled = false;
+  }
+
+  runButton.addEventListener("click", async function () {
+    resultsBox.innerHTML = "";
+    if (!recordsInput.files.length) { note("Choose a records file first.", "error"); return; }
+    if (!imagesInput.files.length) { note("Choose the label images to check.", "error"); return; }
+
+    setRunning(true);
+    note("Reading application records…");
+
+    var body = new FormData();
+    body.append("records", recordsInput.files[0]);
+
+    try {
+      var response = await fetch("/api/batch/records", { method: "POST", body: body });
+      var parsed = await response.json();
+      if (!response.ok) {
+        note(parsed.detail || "Could not read that records file.", "error");
+        return;
+      }
+      await runBatch(parsed, imagesInput.files);
+    } catch (err) {
+      note("Could not reach the server.", "error");
+    } finally {
+      setRunning(false);
+    }
   });
+
+  if (sampleButton) {
+    sampleButton.addEventListener("click", async function () {
+      resultsBox.innerHTML = "";
+      setRunning(true);
+      note("Loading the sample batch…");
+      try {
+        var response = await fetch("/examples/batch");
+        var parsed = await response.json();
+        if (!response.ok) {
+          note(parsed.detail || "The sample batch is not available.", "error");
+          return;
+        }
+        /* Fetch each fixture image and wrap it as a File, so the sample runs
+           through exactly the same path as an agent's own upload. */
+        var names = Object.keys(parsed.images).map(function (id) { return parsed.images[id]; });
+        var files = await Promise.all(names.map(function (name) {
+          return fetch("/examples/" + name.replace(/\.png$/i, "") + "/image")
+            .then(function (r) { return r.blob(); })
+            .then(function (blob) { return new File([blob], name, { type: "image/png" }); });
+        }));
+        await runBatch(parsed, files);
+      } catch (err) {
+        note("Could not load the sample batch.", "error");
+      } finally {
+        setRunning(false);
+      }
+    });
+  }
 })();

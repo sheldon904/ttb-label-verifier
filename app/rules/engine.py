@@ -15,9 +15,9 @@ from app.rules.fields import (
     check_class_type,
     check_country_of_origin,
     check_net_contents,
+    parse_net_contents_ml,
 )
 from app.rules.warning import check_warning_text, check_warning_typography
-
 
 # A field read below this confidence cannot support a rejection.
 MIN_CONFIDENCE_TO_FAIL = 70.0
@@ -59,6 +59,20 @@ def aggregate(checks: list[CheckResult]) -> Verdict:
     return Verdict.PASS
 
 
+def container_volume_ml(record: ApplicationRecord, extraction: LabelExtraction) -> float | None:
+    """The container size, from the application first and the artwork second.
+
+    Used to state which 27 CFR 16.22(b) type-size minimum applies to the
+    warning. The application is preferred because it is typed, not read.
+    """
+    for candidate in (record.net_contents, extraction.net_contents):
+        if candidate:
+            ml = parse_net_contents_ml(candidate)
+            if ml is not None:
+                return ml
+    return None
+
+
 def review(record: ApplicationRecord, extraction: LabelExtraction,
            elapsed_ms: int | None = None) -> ReviewResult:
     checks: list[CheckResult] = [
@@ -70,7 +84,8 @@ def review(record: ApplicationRecord, extraction: LabelExtraction,
                        extraction.bottler_name, extraction.bottler_address),
         check_country_of_origin(record.country_of_origin, extraction.country_of_origin),
         check_warning_text(extraction.warning_text, extraction.warning_legibility),
-        check_warning_typography(extraction.warning_prefix_is_bold),
+        check_warning_typography(extraction.warning_prefix_is_bold,
+                                 container_volume_ml(record, extraction)),
     ]
     checks = soften_unreliable_failures(checks, extraction.field_confidence)
     return ReviewResult(

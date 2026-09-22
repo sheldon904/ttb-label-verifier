@@ -16,7 +16,7 @@ from app.extract.stub import StubExtractor
 def build_extractor(settings: Settings) -> LabelExtractor:
     match settings.extractor:
         case "ocr":
-            return OcrExtractor()
+            return OcrExtractor(tesseract_cmd=settings.tesseract_cmd)
         case "stub":
             return StubExtractor()
         case other:

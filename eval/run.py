@@ -1,9 +1,15 @@
 """Runs every fixture through the real pipeline and scores the result.
 
 Usage:
-    make eval                                  # uses LABEL_EXTRACTOR from .env
-    python -m eval.run --extractor stub        # offline, no cost
-    python -m eval.run --model claude-sonnet-5 # bake-off against the default
+    make eval                                  # full OCR pipeline, concurrency 1
+    python -m eval.run --extractor stub        # rule engine only, no OCR
+    python -m eval.run --concurrency 8         # throughput measurement
+
+The exit code gates on what actually matters. A miss that refers a compliant
+label to a human is a cost; a miss that rejects a compliant label, or passes
+a defective one, is harm. The run fails on any harm, and on accuracy only
+below a floor that is set well under the measured figure so that a slightly
+different Tesseract build does not break the build.
 """
 
 from __future__ import annotations
@@ -18,11 +24,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.config import REPO_ROOT, load_settings  # noqa: E402
-from app.extract.factory import build_extractor  # noqa: E402
-from app.models import ApplicationRecord  # noqa: E402
-from app.pipeline import review_label  # noqa: E402
-from eval.report import EvalSummary, FixtureOutcome, render  # noqa: E402
+from app.config import REPO_ROOT, load_settings
+from app.extract.factory import build_extractor
+from app.models import ApplicationRecord
+from app.pipeline import review_label
+from eval.report import EvalSummary, FixtureOutcome, render
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
 OUT_DIR = REPO_ROOT / "eval" / "out"
@@ -52,7 +58,7 @@ def score_fields(truth: dict, observed: dict) -> dict[str, bool]:
     return hits
 
 
-async def run_one(fx: dict, extractor, settings, sem: asyncio.Semaphore) -> FixtureOutcome:
+async def run_one(fx: dict, extractor, sem: asyncio.Semaphore) -> FixtureOutcome:
     async with sem:
         raw = fx["_image"].read_bytes()
         record = ApplicationRecord(**fx["record"])
@@ -63,7 +69,7 @@ async def run_one(fx: dict, extractor, settings, sem: asyncio.Semaphore) -> Fixt
                 id=fx["id"], description=fx["description"], expected=fx["expected_verdict"],
                 actual="error", expected_fields=fx["expected_failing_fields"],
                 actual_failing_fields=[], field_hits={}, total_ms=0,
-                input_tokens=0, output_tokens=0, error=f"{type(exc).__name__}: {exc}",
+                error=f"{type(exc).__name__}: {exc}",
             )
 
         observed = bundle.extraction.model_dump()
@@ -75,8 +81,6 @@ async def run_one(fx: dict, extractor, settings, sem: asyncio.Semaphore) -> Fixt
             actual_failing_fields=failing,
             field_hits=score_fields(fx["observations"], observed),
             total_ms=bundle.telemetry.get("total_ms", 0),
-            input_tokens=bundle.telemetry.get("input_tokens", 0),
-            output_tokens=bundle.telemetry.get("output_tokens", 0),
         )
 
 
@@ -96,7 +100,7 @@ async def main_async(args) -> int:
     print(f"Evaluating {len(fixtures)} fixtures via {extractor.name} "
           f"(concurrency {args.concurrency})...\n")
     started = time.perf_counter()
-    outcomes = await asyncio.gather(*(run_one(f, extractor, settings, sem) for f in fixtures))
+    outcomes = await asyncio.gather(*(run_one(f, extractor, sem) for f in fixtures))
     wall_clock = time.perf_counter() - started
 
     for o in outcomes:
@@ -113,7 +117,9 @@ async def main_async(args) -> int:
     (OUT_DIR / f"report-{name}.md").write_text(report, encoding="utf-8")
     (OUT_DIR / "report.md").write_text(report, encoding="utf-8")
 
-    print(f"\n{summary.accuracy:.1%} verdict accuracy over {summary.n} fixtures")
+    unsafe = len(summary.unsafe_misses)
+    print(f"\n{summary.accuracy:.1%} verdict accuracy over {summary.n} fixtures; "
+          f"{len(summary.cautious_misses)} referred unnecessarily; {unsafe} harmful")
     print(f"p50 {summary.pct(50)} ms · p95 {summary.pct(95)} ms"
           + (f" (interactive budget 5000 ms: {'MET' if summary.pct(95) < 5000 else 'MISSED'})"
              if args.concurrency == 1 else " (under load)"))
@@ -121,15 +127,25 @@ async def main_async(args) -> int:
           f"-> a 300-label batch in ~{300 / max(summary.throughput_per_min, 1e-9):.1f} min")
     print(f"report -> {OUT_DIR / f'report-{name}.md'}")
 
-    return 0 if summary.accuracy >= args.min_accuracy else 2
+    if unsafe > args.max_unsafe:
+        print(f"\nFAIL: {unsafe} harmful outcome(s); the limit is {args.max_unsafe}.", file=sys.stderr)
+        return 2
+    if summary.accuracy < args.min_accuracy:
+        print(f"\nFAIL: accuracy {summary.accuracy:.1%} is below the floor of "
+              f"{args.min_accuracy:.0%}.", file=sys.stderr)
+        return 2
+    return 0
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Evaluate the label verifier against its fixture set.")
     p.add_argument("--extractor", choices=["ocr", "stub"])
-    p.add_argument("--concurrency", type=int, default=6)
-    p.add_argument("--min-accuracy", type=float, default=0.90,
-                   help="Exit non-zero below this. Default 0.90.")
+    p.add_argument("--concurrency", type=int, default=1,
+                   help="1 measures interactive latency; higher measures throughput.")
+    p.add_argument("--max-unsafe", type=int, default=0,
+                   help="Exit non-zero above this many harmful outcomes. Default 0.")
+    p.add_argument("--min-accuracy", type=float, default=0.80,
+                   help="Exit non-zero below this verdict accuracy. Default 0.80.")
     return asyncio.run(main_async(p.parse_args()))
 
 

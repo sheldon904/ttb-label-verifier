@@ -16,9 +16,10 @@ os.environ["LABEL_EXTRACTOR"] = "stub"
 
 @pytest.fixture(scope="module")
 def client():
-    import app.main as main
-    from app.config import load_settings
     from dataclasses import replace
+
+    from app import main
+    from app.config import load_settings
     main.settings = replace(load_settings(), extractor="stub")
     main._extractor = None
     return TestClient(main.app)
@@ -47,7 +48,7 @@ def test_example_reproduces_jennys_rejection(client):
     warning = next(c for c in d["checks"] if c["field"] == "government_warning")
     assert warning["verdict"] == "fail"
     assert "capital" in warning["reason"].lower()
-    assert warning["citation"] == "27 CFR 16.21"
+    assert warning["citation"] == "27 CFR 16.22(b)"
 
 
 def test_example_catches_self_contradictory_proof(client):

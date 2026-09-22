@@ -12,3 +12,6 @@ venv/
 eval/out/report-*.md.bak
 # fixture PNGs are committed on purpose -- the eval set must be
 # reproducible without the system fonts used to render them
+
+# browser smoke-test artifacts
+.playwright-mcp/

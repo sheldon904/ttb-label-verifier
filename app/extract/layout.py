@@ -19,8 +19,12 @@ from dataclasses import dataclass, field
 from rapidfuzz import fuzz
 
 WARNING_PREFIX_WORDS = ("GOVERNMENT", "WARNING")
+# The statute's closing words. Once these have been read the statement is
+# complete, and whatever small type follows it (a web address, a UPC caption,
+# a bottler line) is a separate element that must not be transcribed into it.
+WARNING_END_PHRASE = "HEALTH PROBLEMS"
 
-_ABV_RE = re.compile(r"\d+(?:\.\d+)?\s*%")
+_ABV_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|percent\b)", re.IGNORECASE)
 _VOLUME_RE = re.compile(
     r"\d+(?:[.,]\d+)?\s*(?:ml|mL|ML|millilitres?|milliliters?|cl|cL|CL|centilitres?|"
     r"centiliters?|l|L|litres?|liters?)\b"
@@ -113,14 +117,32 @@ def extract_warning(lines: list[Line]) -> tuple[str | None, list[Line]]:
 
     block = [lines[start]]
     base_height = lines[start].height
-    for ln in lines[start + 1:]:
-        if ln.height > base_height * 1.8:
-            break
-        if ln.top - block[-1].bottom > base_height * 2.5:
-            break
-        block.append(ln)
+    if not closes_statement(lines[start].text):
+        for ln in lines[start + 1:]:
+            if ln.height > base_height * 1.8:
+                break
+            if ln.top - block[-1].bottom > base_height * 2.5:
+                break
+            block.append(ln)
+            if closes_statement(ln.text):
+                break
 
     return " ".join(ln.text for ln in block), block
+
+
+def closes_statement(text: str) -> bool:
+    """Does this line contain the statute's final words?
+
+    Fuzzy on the tail of the line only, so one misread character in
+    "problems" does not let the block run on into the next element.
+    """
+    upper = text.upper()
+    if WARNING_END_PHRASE in upper:
+        return True
+    words = re.findall(r"[A-Z]+", upper)
+    if len(words) < 2:
+        return False
+    return fuzz.ratio(" ".join(words[-2:]), WARNING_END_PHRASE) >= 85
 
 
 def pick_brand_and_class(

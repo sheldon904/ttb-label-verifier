@@ -1,19 +1,32 @@
-.PHONY: install dev test eval lint fixtures
+.PHONY: install dev test eval eval-throughput lint fixtures docker
+
+# The virtualenv lays its binaries out differently on Windows. Pick whichever
+# exists so the same targets work from Git Bash, WSL, macOS and Linux.
+VENV_BIN := $(if $(wildcard .venv/Scripts),.venv/Scripts,.venv/bin)
+PY := $(VENV_BIN)/python
 
 install:
-	python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+	python -m venv .venv && $(PY) -m pip install -r requirements-dev.txt
 
 dev:
-	.venv/bin/uvicorn app.main:app --reload --port 8000
+	$(PY) -m uvicorn app.main:app --reload --port 8000
 
 test:
-	.venv/bin/pytest -q
+	$(PY) -m pytest -q
 
+# Interactive latency: one label at a time, the way an agent experiences it.
 eval:
-	.venv/bin/python -m eval.run
+	$(PY) -m eval.run --concurrency 1
+
+# Throughput: the batch path, saturating the OCR thread pool.
+eval-throughput:
+	$(PY) -m eval.run --concurrency 8
 
 lint:
-	.venv/bin/ruff check app tests eval
+	$(PY) -m ruff check app tests eval
 
 fixtures:
-	.venv/bin/python fixtures/generate.py
+	$(PY) fixtures/generate.py
+
+docker:
+	docker build -t ttb-label-verifier . && docker run --rm -p 8000:8000 ttb-label-verifier

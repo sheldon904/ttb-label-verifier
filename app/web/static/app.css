@@ -5,7 +5,8 @@
    Accessibility decisions that are requirements here, not polish:
      - every status carries a text label, never colour alone (WCAG 1.4.1)
      - base type is 18px; Sarah's benchmark is her 73-year-old mother
-     - visible focus rings, generous hit targets, one column on narrow screens */
+     - visible focus rings, generous hit targets, one column on narrow screens
+     - the result prints as a clean checklist; Dave prints his emails */
 
 :root {
   --ink: #1b1b1b;
@@ -41,6 +42,8 @@ h1 { font-size: 2.2rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
 h2 { font-size: 1.3rem; margin: 0 0 1.1rem; }
 h3 { font-size: 1.05rem; margin: 0 0 .6rem; }
 
+a { color: var(--primary); }
+
 .banner {
   background: #162e51; color: #fff; padding: .7rem 1.5rem; font-size: .95rem;
 }
@@ -69,7 +72,8 @@ input[type="text"] {
   width: 100%; padding: .6rem .7rem; font: inherit; color: var(--ink);
   background: #fff; border: 1px solid #565c65; border-radius: var(--radius);
 }
-input[type="text"]:focus-visible, .dropzone:focus-visible, button:focus-visible {
+input[type="text"]:focus-visible, .dropzone:focus-visible, button:focus-visible,
+a:focus-visible {
   outline: 4px solid #face00; outline-offset: 2px;
 }
 
@@ -99,9 +103,22 @@ input[type="text"]:focus-visible, .dropzone:focus-visible, button:focus-visible 
   padding: .35rem 0; text-align: left; font-weight: 400;
 }
 .btn--link:hover { color: var(--primary-dark); }
+.btn--link[disabled] { color: var(--ink-muted); cursor: progress; }
 
 .examples { margin-top: 1.8rem; padding-top: 1.3rem; border-top: 1px solid var(--line); }
 .examples ul { list-style: none; margin: 0; padding: 0; }
+.examples .dropzone__hint { margin-bottom: .4rem; }
+
+/* --- the artwork, beside the checklist that describes it --- */
+.artwork {
+  margin: 0 0 1.2rem; padding: .6rem; background: #f0f0f0;
+  border: 1px solid var(--line); border-radius: var(--radius); text-align: center;
+}
+.artwork img {
+  display: block; margin: 0 auto; max-width: 100%; max-height: 340px;
+  object-fit: contain; background: #fff;
+}
+.artwork figcaption { margin-top: .4rem; font-size: .9rem; color: var(--ink-muted); }
 
 /* --- results: Jenny's printed checklist, on screen --- */
 .placeholder { color: var(--ink-muted); }
@@ -154,6 +171,8 @@ input[type="text"]:focus-visible, .dropzone:focus-visible, button:focus-visible 
 .notes { margin-top: 1.3rem; padding-top: 1rem; border-top: 1px solid var(--line);
          font-size: .93rem; color: var(--ink-muted); }
 .notes ul { margin: .35rem 0 0; padding-left: 1.2rem; }
+
+.print-hint { margin: 1rem 0 0; }
 
 .alert { padding: .9rem 1.1rem; border-radius: var(--radius); margin-bottom: 1.5rem;
          border-left: 8px solid; }
@@ -212,3 +231,20 @@ input[type="file"] { font: inherit; width: 100%; padding: .45rem 0; }
 .results__verdict--pass { color: #0a5c13; }
 .results__verdict--flag { color: #6b4f20; }
 .results__verdict--fail { color: #8b0707; }
+
+
+/* --- print: the checklist, the artwork, and nothing else --------------- */
+
+@media print {
+  body { background: #fff; font-size: 12pt; }
+  .banner, .modes, .lede, #panel-single > .panel:first-child, .print-hint,
+  #panel-batch, footer, .btn { display: none !important; }
+  .layout { display: block; }
+  .panel { border: none; padding: 0; }
+  .artwork { break-inside: avoid; }
+  .artwork img { max-height: 3.2in; }
+  .verdict { border: 1px solid #000; }
+  .check { break-inside: avoid; }
+  .check__status { border: 1px solid #000; }
+  h1::after { content: " (prototype, assists review only)"; font-weight: 400; font-size: .7em; }
+}

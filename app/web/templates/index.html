@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Label Verification</title>
 <link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:,">
 </head>
 <body>
 
 <header class="banner" role="banner">
   <p><strong>Prototype.</strong> Not connected to COLA. No uploaded image or application
-     data is stored — everything is processed in memory and discarded.</p>
+     data is stored. Everything is processed in memory and discarded.</p>
 </header>
 
 <main id="main">
@@ -116,16 +117,24 @@
 
     <section class="panel" aria-labelledby="result-heading" aria-live="polite">
       <h2 id="result-heading">Result</h2>
+      <figure id="artwork" class="artwork" hidden>
+        <img id="artwork-img" alt="The label artwork being checked">
+        <figcaption id="artwork-caption"></figcaption>
+      </figure>
       <div id="result">
         <p class="placeholder">Results will appear here once a label is checked.</p>
       </div>
+      <p class="print-hint">
+        <button type="button" class="btn btn--link" id="print" hidden>Print this checklist</button>
+      </p>
     </section>
   </div>
   <div id="panel-batch" hidden>
     <section class="panel">
       <h2>Review a batch</h2>
       <p class="lede">Upload the label artwork and one file of application records.
-         Images are matched to records by COLA ID in the file name.</p>
+         Images are matched to records by COLA ID in the file name, or by an image
+         column in the records file.</p>
 
       <div class="field">
         <label for="batch-records">Application records</label>
@@ -140,7 +149,17 @@
                accept="image/jpeg,image/png,image/webp,image/tiff">
       </div>
 
-      <button type="button" class="btn btn--primary" id="batch-run">Check this batch</button>
+      <button type="button" class="btn btn--primary" id="batch-run"
+              data-concurrency="{{ batch_concurrency }}">Check this batch</button>
+
+      {% if sample_batch %}
+      <div class="examples">
+        <h3>Or try the sample batch</h3>
+        <p class="dropzone__hint">Twenty-two generated labels with their application
+           records, including deliberate defects and badly photographed compliant labels.</p>
+        <button type="button" class="btn btn--link" id="batch-sample">Run the sample batch</button>
+      </div>
+      {% endif %}
 
       <div id="batch-status" aria-live="polite"></div>
       <div id="batch-results"></div>
@@ -150,7 +169,7 @@
 
 <footer>
   <p>Checks are evaluated against 27 CFR Parts 5 and 16. This tool assists review;
-     it does not make determinations.</p>
+     it does not make determinations. <a href="/docs">API documentation</a>.</p>
 </footer>
 
 <script src="/static/app.js"></script>

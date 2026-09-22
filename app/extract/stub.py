@@ -1,7 +1,7 @@
 """Replays recorded observations for a known fixture image.
 
-Lets the UI, the batch path and the rule engine be built, demoed and tested with
-zero API spend and zero network. Keyed on the SHA-256 of the raw file so it is
+Lets the UI, the batch path and the rule engine be built, demoed and tested
+without Tesseract installed. Keyed on the SHA-256 of the raw file so it is
 unaffected by changes to preprocessing.
 """
 
@@ -42,7 +42,7 @@ class StubExtractor:
         if digest not in self._index:
             raise StubExtractionMissing(
                 "No recorded observations for this image. The stub extractor only serves "
-                "generated fixtures -- run `make fixtures`, or set LABEL_EXTRACTOR=vlm."
+                "the generated fixtures; set LABEL_EXTRACTOR=ocr to read other images."
             )
         telemetry = {"engine": "stub", "elapsed_ms": 0,
                      "deskew_deg": prepared.deskew_deg,

@@ -6,22 +6,21 @@ rejection tells an applicant they broke the law, while a false flag costs an
 agent a minute.
 """
 
-from app.models import ApplicationRecord, LabelExtraction, Verdict
+from app.models import ApplicationRecord, CheckResult, LabelExtraction, Verdict
 from app.rules.engine import review, soften_unreliable_failures
 from app.rules.warning import STATUTORY_WARNING, check_warning_text
-from app.models import CheckResult
 
 
 def _record(**kw):
-    base = dict(cola_id="T-1", brand_name="Old Tom Distillery",
-                alcohol_content_pct=45.0, net_contents="750 mL")
+    base = {"cola_id": "T-1", "brand_name": "Old Tom Distillery",
+                "alcohol_content_pct": 45.0, "net_contents": "750 mL"}
     return ApplicationRecord(**(base | kw))
 
 
 def _extraction(**kw):
-    base = dict(brand_name="OLD TOM DISTILLERY", alcohol_statement="45% Alc./Vol. (90 Proof)",
-                net_contents="750 mL", warning_text=STATUTORY_WARNING,
-                warning_prefix_is_bold=True, warning_legibility="read")
+    base = {"brand_name": "OLD TOM DISTILLERY", "alcohol_statement": "45% Alc./Vol. (90 Proof)",
+                "net_contents": "750 mL", "warning_text": STATUTORY_WARNING,
+                "warning_prefix_is_bold": True, "warning_legibility": "read"}
     return LabelExtraction(**(base | kw))
 
 

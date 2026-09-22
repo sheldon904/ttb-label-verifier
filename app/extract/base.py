@@ -4,11 +4,12 @@
 vendor pilot, half their features didn't work because our firewall blocked
 connections to their ML endpoints."
 
-Extraction is therefore an interface, not a hard dependency on one vendor. A
-cloud VLM is the default; a local OCR implementation is the air-gapped path; a
-stub replays recorded fixtures for offline UI work. Every implementation speaks
-the same raw-observation dict, and `to_extraction` is the single place that dict
-becomes a typed LabelExtraction. The rule engine cannot tell them apart.
+Extraction is therefore an interface. Local Tesseract OCR is the product and
+the only extractor that reads an image; a stub replays recorded fixture
+observations so the rule engine, the API and the UI can be tested with no OCR
+at all. Every implementation speaks the same raw-observation dict, and
+`to_extraction` is the single place that dict becomes a typed LabelExtraction.
+The rule engine cannot tell them apart.
 """
 
 from __future__ import annotations
@@ -25,8 +26,8 @@ class LabelExtractor(Protocol):
     async def extract_raw(self, raw: bytes, prepared: PreparedImage) -> tuple[dict, dict]:
         """Return (observations, telemetry). Never returns a verdict.
 
-        Takes both the original bytes and the preprocessed image: the cloud path
-        sends `prepared`, while the stub identifies fixtures by hashing `raw`.
+        Takes both the original bytes and the preprocessed image: OCR reads
+        `prepared`, while the stub identifies fixtures by hashing `raw`.
         """
         ...
 
@@ -42,8 +43,8 @@ def _clean(value: object) -> str | None:
 def to_extraction(observations: dict) -> LabelExtraction:
     """Map a raw observation dict onto the typed model.
 
-    Tolerant by design: a model that omits an optional key, or returns "" for a
-    missing field, must not crash the pipeline.
+    Tolerant by design: an extractor that omits an optional key, or returns ""
+    for a missing field, must not crash the pipeline.
     """
     bold = observations.get("warning_prefix_is_bold")
     notes = observations.get("legibility_notes") or []

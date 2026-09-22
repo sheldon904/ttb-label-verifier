@@ -34,7 +34,7 @@ def normalize_brand(name: str) -> str:
 
 
 def check_brand_name(expected: str, observed: str | None) -> CheckResult:
-    citation = "27 CFR 5.63 (brand name)"
+    citation = "27 CFR 5.64 (brand name)"
     if not observed:
         return CheckResult(
             field="brand_name", verdict=Verdict.FAIL, expected=expected,
@@ -63,14 +63,52 @@ def check_brand_name(expected: str, observed: str | None) -> CheckResult:
 
 # --- alcohol content -------------------------------------------------------
 
-_ABV = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+_ABV = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent\b)", re.IGNORECASE)
 _PROOF = re.compile(r"(\d+(?:\.\d+)?)\s*proof", re.IGNORECASE)
 
-# TOLERANCE IS BEVERAGE-CLASS DEPENDENT AND MUST BE CITED, NOT INVENTED.
-# Distilled spirits, wine (27 CFR 4.36) and malt beverages each differ. Look up
-# the governing section for the class in scope and set this per class before
-# submission; 0.0 here means "label must state exactly what the application says".
+# No tolerance, on purpose. 27 CFR 5.65(c) allows 0.3 percentage points between
+# the labeled alcohol content and the ACTUAL content of the product, which is a
+# laboratory question and out of scope here. Between the label and the
+# application there is no tolerance: the application states what the label
+# says, and a label that says something else is a different label. (Wine, 27 CFR
+# 4.36, and malt beverages, 7.65, carry their own actual-versus-labeled
+# tolerances; none applies to this comparison either.)
 ABV_TOLERANCE_PCT = 0.0
+
+# 27 CFR 5.65(b): the statement must express alcohol by volume, in one of
+# "Alcohol __% by volume", "__% alcohol by volume" or "Alcohol by volume __%",
+# with "alc", "%", "/" and "vol" as the permitted abbreviations. A bare "45%"
+# is not a compliant statement even when the number is right.
+_ALC_WORD = re.compile(r"\balc(?:ohol)?\b", re.IGNORECASE)
+_VOL_WORD = re.compile(r"\bvol(?:ume)?\b", re.IGNORECASE)
+_PCT_WORD = re.compile(r"%|\bpercent\b", re.IGNORECASE)
+
+
+def check_alcohol_format(statement: str) -> CheckResult:
+    """Advisory: does the statement use a 5.65(b) form? Never rejects on its own.
+
+    Wording variants are an agent's call, and this must not turn an OCR
+    dropout of the word "Vol." into a rejection.
+    """
+    citation = "27 CFR 5.65(b)"
+    ok = bool(_ALC_WORD.search(statement) and _VOL_WORD.search(statement)
+              and _PCT_WORD.search(statement))
+    if ok:
+        return CheckResult(
+            field="alcohol_format", verdict=Verdict.PASS, observed=statement,
+            reason="Stated as alcohol by volume in a permitted form.",
+            citation=citation, advisory=True,
+        )
+    return CheckResult(
+        field="alcohol_format", verdict=Verdict.FLAG, observed=statement,
+        reason=(
+            "The percentage is present but the statement does not read as one of the "
+            "permitted forms ('Alcohol __% by volume', '__% alcohol by volume' or "
+            "'Alcohol by volume __%'; 'alc', '%', '/' and 'vol' may be abbreviated). "
+            "Confirm the wording on the artwork."
+        ),
+        citation=citation, advisory=True,
+    )
 
 
 def parse_alcohol_statement(statement: str) -> tuple[float | None, float | None]:
@@ -85,9 +123,21 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None) -> 
     results: list[CheckResult] = []
 
     if statement is None:
+        if expected_pct is None:
+            # The brief notes exceptions for certain wine and beer. With nothing
+            # to compare against, absence is a question for an agent, not a
+            # rejection issued on the strength of an empty application field.
+            results.append(CheckResult(
+                field="alcohol_content", verdict=Verdict.FLAG,
+                reason=("No alcohol content statement found on the label, and the "
+                        "application does not state one. Required for distilled "
+                        "spirits; confirm whether an exception applies."),
+                citation=citation,
+            ))
+            return results
         results.append(CheckResult(
             field="alcohol_content", verdict=Verdict.FAIL,
-            expected=f"{expected_pct}% Alc./Vol." if expected_pct is not None else None,
+            expected=f"{expected_pct}% Alc./Vol.",
             reason="No alcohol content statement found on the label.", citation=citation,
         ))
         return results
@@ -118,6 +168,9 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None) -> 
             reason=f"Label states {abv}% but the application states {expected_pct}%.",
             citation=citation,
         ))
+
+    if abv is not None:
+        results.append(check_alcohol_format(statement))
 
     # Internal consistency: US proof is exactly twice ABV. The sample label in the
     # brief reads "45% Alc./Vol. (90 Proof)" -- a label can be self-contradictory
@@ -206,7 +259,7 @@ def check_class_type(expected: str | None, observed: str | None) -> CheckResult:
     rather than a mark: "Straight Bourbon" and "Blended Bourbon" are different
     products, not spelling variants. Case and spacing are still forgiven.
     """
-    citation = "27 CFR 5.63 (class and type)"
+    citation = "27 CFR 5.63(a)(2) and subpart I (class and type)"
     if expected is None:
         return CheckResult(
             field="class_type", verdict=Verdict.PASS, observed=observed,
@@ -251,7 +304,7 @@ def check_bottler(expected_name: str | None, expected_address: str | None,
     since formatting variance is the common case and a wrong rejection here
     would be for a difference that carries no regulatory meaning.
     """
-    citation = "27 CFR 5.66 (name and address)"
+    citation = "27 CFR 5.66-5.68 (name and address)"
     results: list[CheckResult] = []
 
     if not expected_name:

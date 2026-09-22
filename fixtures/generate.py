@@ -17,8 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fixtures.render import apply_degradation, render_label  # noqa: E402
-from fixtures.spec import Fixture, build_catalog  # noqa: E402
+from fixtures.render import apply_degradation, render_label
+from fixtures.spec import Fixture, build_catalog
 
 OUT_DIR = Path(__file__).resolve().parent / "labels"
 
@@ -63,14 +63,24 @@ def truth_observations(fx: Fixture) -> dict:
 
 
 def main() -> int:
+    """`--new-only` renders only fixtures without an image yet.
+
+    The committed images are the evaluation set. Re-rendering them on another
+    machine changes their pixels (different font builds), which silently
+    changes every measured number; adding fixtures must not do that.
+    """
+    new_only = "--new-only" in sys.argv
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for stale in OUT_DIR.glob("*.png"):
-        stale.unlink()
-    for stale in OUT_DIR.glob("*.truth.json"):
-        stale.unlink()
+    if not new_only:
+        for stale in OUT_DIR.glob("*.png"):
+            stale.unlink()
+        for stale in OUT_DIR.glob("*.truth.json"):
+            stale.unlink()
 
     catalog = build_catalog()
     for fx in catalog:
+        if new_only and (OUT_DIR / f"{fx.id}.png").is_file():
+            continue
         img = apply_degradation(render_label(fx.spec), fx.degradation)
         img.save(OUT_DIR / f"{fx.id}.png")
         (OUT_DIR / f"{fx.id}.truth.json").write_text(

@@ -21,3 +21,11 @@ cola_id,brand_name,class_type,abv,net_contents,bottler_name,bottler_address,coun
 24-023,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_prefix_not_bold.png
 24-021,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_reworded.png
 24-020,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,warning_title_case.png
+25-006,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v2_body_caps.png
+25-008,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v2_body_caps_not_bold.png
+25-004,Copper Ridge Reserve,Single Malt Whisky,43.0,700 mL,Copper Ridge Distillers,"Inverness, Scotland",Product of Scotland,v2_import_wrong_country.png
+25-002,Harbor Light,India Pale Ale,6.5,355 mL,Harbor Light Brewing Co.,"Portland, Maine",Product of the United States,v2_malt_floz.png
+25-003,Harbor Light,India Pale Ale,6.5,355 mL,Harbor Light Brewing Co.,"Portland, Maine",Product of the United States,v2_malt_floz_wrong.png
+25-007,Chateau Belle Rive,Cabernet Sauvignon,13.5,750 mL,Belle Rive Cellars,"Napa, California",Product of the United States,v2_photo_skewed.png
+25-005,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v2_title_case.png
+25-001,Chateau Belle Rive,Cabernet Sauvignon,13.5,750 mL,Belle Rive Cellars,"Napa, California",Product of the United States,v2_wine_clean.png

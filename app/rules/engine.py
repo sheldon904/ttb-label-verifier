@@ -22,6 +22,14 @@ from app.rules.warning import check_warning_text, check_warning_typography
 # A field read below this confidence cannot support a rejection.
 MIN_CONFIDENCE_TO_FAIL = 70.0
 
+# Two questions, answered separately on the checklist. Label against its
+# application: does the artwork say what the form says? Label against the
+# regulation: does the artwork meet the rule whatever the form says? A label
+# can match its application perfectly and still fail the second.
+REGULATION_FIELDS = frozenset({
+    "alcohol_format", "proof_consistency", "government_warning", "warning_typography",
+})
+
 
 def soften_unreliable_failures(
     checks: list[CheckResult], confidence: dict[str, float]
@@ -32,21 +40,34 @@ def soften_unreliable_failures(
     for this: a false rejection tells an applicant they broke the law, while a
     false flag costs an agent a minute. When the evidence is weak we pay the
     minute.
+
+    Every row whose doubt comes from the read, softened or already a FLAG, is
+    marked `read_uncertain`. That marker is what a second opinion is allowed
+    to act on, and nothing else.
     """
     out: list[CheckResult] = []
     for check in checks:
         conf = confidence.get(check.field)
-        if check.verdict is Verdict.FAIL and conf is not None and conf < MIN_CONFIDENCE_TO_FAIL:
+        low = conf is not None and conf < MIN_CONFIDENCE_TO_FAIL
+        if check.verdict is Verdict.FAIL and low:
             out.append(check.model_copy(update={
                 "verdict": Verdict.FLAG,
+                "read_uncertain": True,
                 "reason": (
                     f"{check.reason} This field was read with low confidence "
                     f"({conf:.0f}%), so it is referred for review rather than rejected."
                 ),
             }))
+        elif check.verdict is Verdict.FLAG and low and not check.read_uncertain:
+            out.append(check.model_copy(update={"read_uncertain": True}))
         else:
             out.append(check)
     return out
+
+
+def assign_layers(checks: list[CheckResult]) -> list[CheckResult]:
+    return [c.model_copy(update={"layer": "regulation" if c.field in REGULATION_FIELDS
+                                 else "application"}) for c in checks]
 
 
 def aggregate(checks: list[CheckResult]) -> Verdict:
@@ -87,7 +108,7 @@ def review(record: ApplicationRecord, extraction: LabelExtraction,
         check_warning_typography(extraction.warning_prefix_is_bold,
                                  container_volume_ml(record, extraction)),
     ]
-    checks = soften_unreliable_failures(checks, extraction.field_confidence)
+    checks = assign_layers(soften_unreliable_failures(checks, extraction.field_confidence))
     return ReviewResult(
         cola_id=record.cola_id,
         verdict=aggregate(checks),

@@ -14,6 +14,22 @@
   var artworkImg = document.getElementById("artwork-img");
   var artworkCaption = document.getElementById("artwork-caption");
   var printButton = document.getElementById("print");
+  var boxesSvg = document.getElementById("artwork-boxes");
+  var boxesToggle = document.getElementById("boxes-toggle");
+  var boxesToggleWrap = document.getElementById("boxes-toggle-wrap");
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  /* Rows that share the line they were read from share its box. */
+  var BOX_OF = { alcohol_format: "alcohol_content", proof_consistency: "alcohol_content" };
+  var LAYERS = [
+    ["application", "Label against the application"],
+    ["regulation", "Label against the regulation"]
+  ];
+  var TRIAGE_TEXT = function (p) {
+    if (p >= 0.6) return "Likely a real problem with the label";
+    if (p <= 0.4) return "Likely a reading problem, not the label";
+    return "Unclear whether the label or the image is at fault";
+  };
 
   var FIELD_LABELS = {
     brand_name: "Brand name",
@@ -69,7 +85,53 @@
     artworkImg.src = src;
     artworkCaption.textContent = caption || "";
     artwork.hidden = false;
+    clearBoxes();
   }
+
+  /* --- evidence boxes --------------------------------------------------
+     Where on the artwork each field was read, coloured by its result. The
+     OCR works on a straightened, enlarged copy; the server maps every box
+     back onto the picture as it is shown here, so a tilted photo gets
+     tilted boxes. Clicking a checklist row picks out its box. */
+
+  function clearBoxes() {
+    while (boxesSvg.firstChild) boxesSvg.removeChild(boxesSvg.firstChild);
+    boxesToggleWrap.hidden = true;
+  }
+
+  function drawBoxes(boxes, checks) {
+    clearBoxes();
+    if (!boxes) return;
+    var rank = { pass: 0, flag: 1, fail: 2 };
+    var worst = {};
+    checks.forEach(function (c) {
+      var key = BOX_OF[c.field] || c.field;
+      if (!(key in worst) || rank[c.verdict] > rank[worst[key]]) worst[key] = c.verdict;
+    });
+    var drawn = 0;
+    Object.keys(boxes).forEach(function (key) {
+      var quad = boxes[key];
+      var poly = document.createElementNS(SVG_NS, "polygon");
+      poly.setAttribute("points", quad.map(function (p) { return p[0] + "," + p[1]; }).join(" "));
+      poly.setAttribute("class", "box box--" + (worst[key] || "pass"));
+      poly.setAttribute("data-field", key);
+      boxesSvg.appendChild(poly);
+      drawn++;
+    });
+    boxesToggleWrap.hidden = drawn === 0;
+    boxesSvg.style.display = boxesToggle.checked ? "" : "none";
+  }
+
+  function highlightBox(field) {
+    var key = BOX_OF[field] || field;
+    Array.prototype.forEach.call(boxesSvg.querySelectorAll("polygon"), function (p) {
+      p.classList.toggle("is-active", p.getAttribute("data-field") === key);
+    });
+  }
+
+  boxesToggle.addEventListener("change", function () {
+    boxesSvg.style.display = boxesToggle.checked ? "" : "none";
+  });
 
   function showArtworkFile(file) {
     previewUrl = URL.createObjectURL(file);
@@ -142,7 +204,13 @@
     var status = el("span", "check__status", STATUS[check.verdict]);
     head.appendChild(status);
     if (check.advisory) head.appendChild(el("span", "check__advisory", "advisory"));
+    if (check.source === "second_opinion") {
+      head.appendChild(el("span", "check__source", "cleared by second reading"));
+    }
     li.appendChild(head);
+    li.tabIndex = 0;
+    li.addEventListener("click", function () { highlightBox(check.field); });
+    li.addEventListener("focus", function () { highlightBox(check.field); });
 
     var body = el("div", "check__body");
 
@@ -186,16 +254,32 @@
     banner.appendChild(el("span", "verdict__meta", meta));
     result.appendChild(banner);
 
-    var list = el("ul", "checks");
-    /* FAIL first, then FLAG, then PASS: an agent triages exceptions. */
+    if (data.verdict === "flag" && data.triage) {
+      var t = el("p", "triage-line");
+      t.appendChild(el("strong", null, TRIAGE_TEXT(data.triage.probability) + ". "));
+      t.appendChild(document.createTextNode(
+        "Referral triage (" + data.triage.provider + ") puts the chance of a genuine defect at "
+        + Math.round(data.triage.probability * 100) + "%. It orders the queue; it does not decide."));
+      result.appendChild(t);
+    }
+
+    /* Two questions, answered separately. Within each, FAIL first, then
+       FLAG, then PASS: an agent triages exceptions. */
     var order = { fail: 0, flag: 1, pass: 2 };
-    data.checks.slice().sort(function (a, b) {
-      if (order[a.verdict] !== order[b.verdict]) {
-        return order[a.verdict] - order[b.verdict];
-      }
-      return FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field);
-    }).forEach(function (c) { list.appendChild(renderCheck(c)); });
-    result.appendChild(list);
+    LAYERS.forEach(function (layer) {
+      var rows = data.checks.filter(function (c) { return (c.layer || "application") === layer[0]; });
+      if (!rows.length) return;
+      result.appendChild(el("h3", "layer-heading", layer[1]));
+      var list = el("ul", "checks");
+      rows.sort(function (a, b) {
+        if (order[a.verdict] !== order[b.verdict]) {
+          return order[a.verdict] - order[b.verdict];
+        }
+        return FIELD_ORDER.indexOf(a.field) - FIELD_ORDER.indexOf(b.field);
+      }).forEach(function (c) { list.appendChild(renderCheck(c)); });
+      result.appendChild(list);
+    });
+    drawBoxes(data.boxes, data.checks);
 
     if (data.notes && data.notes.length) {
       var notes = el("div", "notes");
@@ -280,6 +364,7 @@
   if (!modeBatch) return;
 
   var CONCURRENCY = parseInt(runButton.getAttribute("data-concurrency"), 10) || 4;
+  var MAX_LABELS = parseInt(runButton.getAttribute("data-max-labels"), 10) || 500;
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -353,7 +438,7 @@
     body.append("bottler_address", record.bottler_address || "");
     body.append("country_of_origin", record.country_of_origin || "");
 
-    return fetch("/api/review", { method: "POST", body: body })
+    return postWithRetry(body, 0)
       .then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (payload) {
           if (!response.ok) {
@@ -367,6 +452,18 @@
         return { cola_id: record.cola_id, verdict: "error",
                  error: "Could not reach the server", checks: [] };
       });
+  }
+
+  /* A public deployment rate-limits each address. A batch that outruns the
+     limit waits the time the server asks for and carries on, rather than
+     marking labels "not checked". */
+  function postWithRetry(body, attempt) {
+    return fetch("/api/review", { method: "POST", body: body }).then(function (response) {
+      if (response.status !== 429 || attempt >= 6) return response;
+      var wait = Math.min(parseInt(response.headers.get("Retry-After"), 10) || 5, 60);
+      return new Promise(function (resolve) { setTimeout(resolve, wait * 1000); })
+        .then(function () { return postWithRetry(body, attempt + 1); });
+    });
   }
 
   /* Bounded worker pool: start N chains, each pulling the next item. */
@@ -433,32 +530,54 @@
     var table = el("table", "results");
     var thead = el("thead");
     var hrow = el("tr");
-    ["COLA ID", "Result", "Findings"].forEach(function (h) {
+    ["COLA ID", "Result", "Findings", "Likely cause"].forEach(function (h) {
       hrow.appendChild(el("th", null, h));
     });
     thead.appendChild(hrow);
     table.appendChild(thead);
 
+    /* Referrals sort by triage, most likely genuine first: that is the order an
+       agent should work them in. */
     var order = { fail: 0, error: 1, flag: 2, pass: 3 };
     var tbody = el("tbody");
-    rows.slice().sort(function (a, b) { return order[a.verdict] - order[b.verdict]; })
-        .forEach(function (r) {
+    rows.slice().sort(function (a, b) {
+      if (order[a.verdict] !== order[b.verdict]) return order[a.verdict] - order[b.verdict];
+      return triageP(b) - triageP(a);
+    }).forEach(function (r) {
       var tr = el("tr", r.verdict === "fail" ? "is-fail" : (r.verdict === "flag" ? "is-flag" : ""));
       tr.appendChild(el("td", null, r.cola_id));
       tr.appendChild(el("td", "results__verdict results__verdict--" + r.verdict,
                         VERDICT_LABEL[r.verdict] || r.verdict));
       tr.appendChild(el("td", null, findingsOf(r)));
+      var cause = el("td", "results__triage");
+      if (r.verdict === "flag" && r.triage) {
+        cause.appendChild(el("span", "pill pill--" + (r.triage.probability >= 0.6 ? "fail"
+          : r.triage.probability <= 0.4 ? "pass" : "flag"),
+          r.triage.probability >= 0.6 ? "The label" : r.triage.probability <= 0.4 ? "The image" : "Unclear"));
+        cause.title = TRIAGE_TEXT(r.triage.probability) + " (" + r.triage.provider + ", "
+          + Math.round(r.triage.probability * 100) + "%)";
+      }
+      tr.appendChild(cause);
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
     resultsBox.appendChild(table);
   }
 
+  function triageP(r) { return r.triage ? r.triage.probability : -1; }
+
+  var TRIAGE_TEXT = function (p) {
+    if (p >= 0.6) return "Likely a real problem with the label";
+    if (p <= 0.4) return "Likely a reading problem, not the label";
+    return "Unclear whether the label or the image is at fault";
+  };
+
   function downloadCsv(rows) {
-    var head = ["cola_id", "verdict", "elapsed_ms", "findings"];
+    var head = ["cola_id", "verdict", "elapsed_ms", "findings", "triage_probability", "triage_provider"];
     var lines = [head.join(",")];
     rows.forEach(function (r) {
-      lines.push([r.cola_id, r.verdict, r.elapsed_ms || "", findingsOf(r)]
+      lines.push([r.cola_id, r.verdict, r.elapsed_ms || "", findingsOf(r),
+                  r.triage ? r.triage.probability.toFixed(2) : "", r.triage ? r.triage.provider : ""]
         .map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; })
         .join(","));
     });
@@ -489,6 +608,12 @@
       problems.push(matched.unmatched.length +
         " image(s) matched no COLA ID: " + matched.unmatched.slice(0, 5).join(", ") +
         (matched.unmatched.length > 5 ? "…" : ""));
+    }
+
+    if (work.length > MAX_LABELS) {
+      note("That is " + work.length + " labels. The limit is " + MAX_LABELS
+           + " per batch; split the records file and run it in parts.", "error");
+      return;
     }
 
     if (!work.length) {

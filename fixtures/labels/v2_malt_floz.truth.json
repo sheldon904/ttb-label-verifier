@@ -1,0 +1,29 @@
+{
+  "id": "v2_malt_floz",
+  "description": "Second template: '12 FL OZ' on the label, '355 mL' on the application",
+  "record": {
+    "cola_id": "25-002",
+    "brand_name": "Harbor Light",
+    "class_type": "India Pale Ale",
+    "alcohol_content_pct": 6.5,
+    "net_contents": "355 mL",
+    "bottler_name": "Harbor Light Brewing Co.",
+    "bottler_address": "Portland, Maine",
+    "country_of_origin": "Product of the United States"
+  },
+  "observations": {
+    "brand_name": "HARBOR LIGHT",
+    "class_type": "India Pale Ale",
+    "alcohol_statement": "6.5% ALC/VOL",
+    "net_contents": "12 FL OZ",
+    "bottler_name": "Harbor Light Brewing Co.",
+    "bottler_address": "Portland, Maine",
+    "country_of_origin": "Product of the United States",
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": []
+}

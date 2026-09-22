@@ -15,6 +15,7 @@ reason for choosing a classical pipeline here.
 from __future__ import annotations
 
 import io
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -46,10 +47,62 @@ class PreparedImage:
     original_bytes: int
     deskew_deg: float
     upscale_factor: float
+    # The geometry needed to put an OCR box back on the picture the agent sees:
+    # the size after EXIF orientation (what a browser displays), the size after
+    # deskew and before upscaling, and the inverse rotation PIL applied.
+    display_size: tuple[int, int] = (0, 0)
+    rotated_size: tuple[int, int] = (0, 0)
+    rotation_matrix: tuple[float, ...] | None = None
 
     @property
     def was_deskewed(self) -> bool:
         return abs(self.deskew_deg) >= 0.5
+
+    def to_display_quad(self, left: float, top: float, right: float,
+                        bottom: float) -> list[list[float]]:
+        """Map a box on the OCR image to four corners on the displayed image.
+
+        Returned as fractions of the displayed width and height, so the browser
+        can draw them over the preview at any size. A box on a deskewed image
+        comes back as a rotated quadrilateral, which is what it is on the photo.
+        """
+        fw, fh = self.final_size
+        rw, rh = self.rotated_size or self.final_size
+        dw, dh = self.display_size or self.final_size
+        sx, sy = rw / fw, rh / fh
+        out: list[list[float]] = []
+        for x, y in ((left, top), (right, top), (right, bottom), (left, bottom)):
+            x, y = x * sx, y * sy
+            if self.rotation_matrix is not None:
+                a, b, c, d, e, f = self.rotation_matrix
+                x, y = a * x + b * y + c, d * x + e * y + f
+            out.append([round(min(max(x / dw, 0.0), 1.0), 4),
+                        round(min(max(y / dh, 0.0), 1.0), 4)])
+        return out
+
+
+def rotation_inverse_matrix(w: int, h: int, angle: float) -> tuple[tuple[float, ...], tuple[int, int]]:
+    """The output-to-input affine matrix PIL uses for `rotate(angle, expand=True)`.
+
+    Mirrors Pillow's own computation (Image.rotate), so a point on the rotated
+    image maps back to exactly where it came from. Returns (matrix, new size).
+    """
+    rad = -math.radians(angle)
+    m = [round(math.cos(rad), 15), round(math.sin(rad), 15), 0.0,
+         round(-math.sin(rad), 15), round(math.cos(rad), 15), 0.0]
+
+    def apply(x: float, y: float) -> tuple[float, float]:
+        return m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]
+
+    cx, cy = w / 2.0, h / 2.0
+    m[2], m[5] = apply(-cx, -cy)
+    m[2] += cx
+    m[5] += cy
+    xs, ys = zip(*(apply(x, y) for x, y in ((0, 0), (w, 0), (w, h), (0, h))), strict=True)
+    nw = math.ceil(max(xs)) - math.floor(min(xs))
+    nh = math.ceil(max(ys)) - math.floor(min(ys))
+    m[2], m[5] = apply(-(nw - w) / 2.0, -(nh - h) / 2.0)
+    return tuple(m), (nw, nh)
 
 
 def _to_grayscale_array(img: Image.Image) -> np.ndarray:
@@ -113,14 +166,20 @@ def estimate_skew(img: Image.Image) -> float:
 
     base = Image.fromarray(edges.astype(np.uint8), mode="L")
 
-    best_angle, best_score = 0.0, -1.0
-    angle = -SKEW_SEARCH_DEG
-    while angle <= SKEW_SEARCH_DEG + 1e-9:
+    def score_at(angle: float) -> float:
         rotated = base.rotate(angle, resample=Image.BILINEAR, fillcolor=0)
         profile = np.asarray(rotated, dtype=np.float64).sum(axis=1)
         delta = np.diff(profile)
-        score = float(np.dot(delta, delta))
-        if score > best_score:
+        return float(np.dot(delta, delta))
+
+    # Start level and move only for a strictly better score. Scanning from the
+    # edge of the range instead meant an image with nothing to measure (every
+    # score tied) was rotated by the first angle tried, -12 degrees.
+    best_angle, best_score = 0.0, score_at(0.0)
+    angle = -SKEW_SEARCH_DEG
+    while angle <= SKEW_SEARCH_DEG + 1e-9:
+        score = score_at(angle)
+        if score > best_score * 1.000001 + 1e-9:
             best_angle, best_score = angle, score
         angle += SKEW_STEP_DEG
     return best_angle
@@ -153,9 +212,13 @@ def prepare_for_ocr(raw: bytes) -> PreparedImage:
     else:
         img = img.convert("RGB")
 
+    display_size = img.size
     skew = estimate_skew(img)
+    matrix = None
     if abs(skew) >= 0.5:
+        matrix, _ = rotation_inverse_matrix(img.width, img.height, skew)
         img = img.rotate(skew, resample=Image.BICUBIC, expand=True, fillcolor=(255, 255, 255))
+    rotated_size = img.size
 
     factor = 1.0
     longest = max(img.size)
@@ -173,4 +236,7 @@ def prepare_for_ocr(raw: bytes) -> PreparedImage:
         original_bytes=len(raw),
         deskew_deg=round(skew, 2),
         upscale_factor=round(factor, 2),
+        display_size=display_size,
+        rotated_size=rotated_size,
+        rotation_matrix=matrix,
     )

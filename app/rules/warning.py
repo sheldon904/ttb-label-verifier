@@ -127,10 +127,11 @@ def split_prefix(text: str) -> tuple[str | None, str]:
 
 
 def _result(verdict: Verdict, observed: str | None, reason: str,
-            citation: str = "27 CFR 16.21") -> CheckResult:
+            citation: str = "27 CFR 16.21", read_uncertain: bool = False) -> CheckResult:
     return CheckResult(
         field="government_warning", verdict=verdict, expected=STATUTORY_WARNING,
-        observed=observed, reason=reason, citation=citation,
+        observed=observed, reason=reason, citation=citation, layer="regulation",
+        read_uncertain=read_uncertain,
     )
 
 
@@ -146,7 +147,7 @@ def check_warning_text(observed: str | None, legibility: str = "read") -> CheckR
         return _result(Verdict.FLAG, None, (
             "Small print was detected where the warning should be, but it could not "
             "be read reliably. Review the artwork directly or request a clearer image."
-        ))
+        ), read_uncertain=True)
 
     if not observed or not observed.strip():
         return _result(Verdict.FAIL, None, "No government warning statement found on the label.")
@@ -155,7 +156,7 @@ def check_warning_text(observed: str | None, legibility: str = "read") -> CheckR
         return _result(Verdict.FLAG, normalize_whitespace(observed), (
             "The warning statement was only partially legible, so it cannot be "
             "compared to the statutory text with confidence. Agent review required."
-        ))
+        ), read_uncertain=True)
 
     obs = normalize_whitespace(observed)
 
@@ -196,7 +197,7 @@ def check_warning_text(observed: str | None, legibility: str = "read") -> CheckR
                 "with an imperfect read: "
                 + "; ".join(word_diff(STATUTORY_WARNING, obs, ignore_case=True))
                 + ". Confirm against the artwork."
-            ))
+            ), read_uncertain=True)
 
         # The full statute is present, and then something else follows it.
         # That is not wrong wording -- but 16.22(a) requires the statement to
@@ -225,7 +226,7 @@ def check_warning_text(observed: str | None, legibility: str = "read") -> CheckR
             "an altered statement: "
             + "; ".join(word_diff(STATUTORY_WARNING, obs, ignore_case=True))
             + ". Confirm against the artwork."
-        ))
+        ), read_uncertain=True)
 
     return _result(Verdict.FAIL, obs, (
         "Warning text does not match the statutory wording: "
@@ -276,6 +277,8 @@ def check_warning_typography(prefix_is_bold: bool | None,
                    + _size_note(container_ml),
             citation=citation,
             advisory=True,
+            read_uncertain=True,
+            layer="regulation",
         )
     if prefix_is_bold:
         return CheckResult(
@@ -284,6 +287,7 @@ def check_warning_typography(prefix_is_bold: bool | None,
             reason=f"{WARNING_PREFIX!r} appears in bold type." + _size_note(container_ml),
             citation=citation,
             advisory=True,
+            layer="regulation",
         )
     return CheckResult(
         field="warning_typography",

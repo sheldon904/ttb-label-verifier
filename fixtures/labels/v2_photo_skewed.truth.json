@@ -1,0 +1,31 @@
+{
+  "id": "v2_photo_skewed",
+  "description": "Second template: compliant wine photographed at an angle",
+  "record": {
+    "cola_id": "25-007",
+    "brand_name": "Chateau Belle Rive",
+    "class_type": "Cabernet Sauvignon",
+    "alcohol_content_pct": 13.5,
+    "net_contents": "750 mL",
+    "bottler_name": "Belle Rive Cellars",
+    "bottler_address": "Napa, California",
+    "country_of_origin": "Product of the United States"
+  },
+  "observations": {
+    "brand_name": "CHATEAU BELLE RIVE",
+    "class_type": "Cabernet Sauvignon",
+    "alcohol_statement": "13.5% Alc./Vol.",
+    "net_contents": "750 mL",
+    "bottler_name": "Belle Rive Cellars",
+    "bottler_address": "Napa, California",
+    "country_of_origin": "Product of the United States",
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_legibility": "read",
+    "legibility_notes": [
+      "label is rotated approximately 5 degrees"
+    ]
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": []
+}

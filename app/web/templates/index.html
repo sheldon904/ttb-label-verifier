@@ -118,8 +118,18 @@
     <section class="panel" aria-labelledby="result-heading" aria-live="polite">
       <h2 id="result-heading">Result</h2>
       <figure id="artwork" class="artwork" hidden>
-        <img id="artwork-img" alt="The label artwork being checked">
-        <figcaption id="artwork-caption"></figcaption>
+        <div class="artwork__frame">
+          <img id="artwork-img" alt="The label artwork being checked">
+          <svg id="artwork-boxes" class="artwork__boxes" viewBox="0 0 1 1"
+               preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+        <figcaption>
+          <span id="artwork-caption"></span>
+          <label class="toggle" id="boxes-toggle-wrap" hidden>
+            <input type="checkbox" id="boxes-toggle" checked>
+            Show where each field was read
+          </label>
+        </figcaption>
       </figure>
       <div id="result">
         <p class="placeholder">Results will appear here once a label is checked.</p>
@@ -150,12 +160,13 @@
       </div>
 
       <button type="button" class="btn btn--primary" id="batch-run"
-              data-concurrency="{{ batch_concurrency }}">Check this batch</button>
+              data-concurrency="{{ batch_concurrency }}"
+              data-max-labels="{{ max_batch_labels }}">Check this batch</button>
 
       {% if sample_batch %}
       <div class="examples">
         <h3>Or try the sample batch</h3>
-        <p class="dropzone__hint">Twenty-two generated labels with their application
+        <p class="dropzone__hint">The generated fixture labels with their application
            records, including deliberate defects and badly photographed compliant labels.</p>
         <button type="button" class="btn btn--link" id="batch-sample">Run the sample batch</button>
       </div>
@@ -170,6 +181,11 @@
 <footer>
   <p>Checks are evaluated against 27 CFR Parts 5 and 16. This tool assists review;
      it does not make determinations. <a href="/docs">API documentation</a>.</p>
+  <p class="assist-status">
+    Second opinion on referrals: <strong>{{ second_opinion or "off" }}</strong>.
+    Referral triage: <strong>{{ triage or "off" }}</strong>.
+    {% if not second_opinion and triage == "heuristic" %}No outbound connection is made.{% endif %}
+  </p>
 </footer>
 
 <script src="/static/app.js"></script>

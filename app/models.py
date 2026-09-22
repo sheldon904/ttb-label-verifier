@@ -97,6 +97,14 @@ class LabelExtraction(BaseModel):
         ),
     )
     notes: list[str] = Field(default_factory=list)
+    field_boxes: dict[str, list[list[float]]] = Field(
+        default_factory=dict,
+        description=(
+            "Where each field was read, as a four-corner polygon in fractions of the "
+            "image as the agent sees it (EXIF orientation applied). Evidence for the "
+            "agent, never an input to a verdict."
+        ),
+    )
 
 
 class CheckResult(BaseModel):
@@ -109,6 +117,26 @@ class CheckResult(BaseModel):
     reason: str = ""
     citation: str | None = None
     advisory: bool = False
+    # Which question this row answers: does the label match its application,
+    # or does the label meet the regulation on its own terms?
+    layer: Literal["application", "regulation"] = "application"
+    # True when a FLAG exists because the image could not be read reliably,
+    # rather than because a confident read disagreed. Only these rows are ever
+    # offered to a second opinion; a confident disagreement is an agent's call.
+    read_uncertain: bool = False
+    # "ocr" for every row the rules produced from the OCR read; "second_opinion"
+    # for a row a second reading cleared. Never set on a FAIL.
+    source: Literal["ocr", "second_opinion"] = "ocr"
+
+
+class Triage(BaseModel):
+    """How likely a referral is to be a genuine defect rather than a read error.
+
+    Advisory ordering for a queue of referrals. It never changes a verdict.
+    """
+
+    probability: float = Field(ge=0.0, le=1.0)
+    provider: str
 
 
 class ReviewResult(BaseModel):
@@ -116,3 +144,4 @@ class ReviewResult(BaseModel):
     verdict: Verdict
     checks: list[CheckResult]
     elapsed_ms: int | None = None
+    triage: Triage | None = None

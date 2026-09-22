@@ -11,6 +11,8 @@ import asyncio
 import time
 from dataclasses import dataclass
 
+from app.assist.second_opinion import SecondOpinionReader, apply_second_opinion
+from app.assist.triage import TriageProvider
 from app.extract.base import LabelExtractor, to_extraction
 from app.extract.imageprep import PreparedImage, prepare_for_ocr
 from app.models import ApplicationRecord, LabelExtraction, ReviewResult
@@ -56,7 +58,14 @@ async def review_label(
     record: ApplicationRecord,
     extractor: LabelExtractor,
     cache: ObservationCache | None = None,
+    second_opinion: SecondOpinionReader | None = None,
+    triage: TriageProvider | None = None,
 ) -> ReviewBundle:
+    """OCR, then the rules; then, only if configured, the two advisory steps.
+
+    Neither advisory step can produce a FAIL. The second opinion can clear a
+    referral the OCR could not read; triage only annotates a referral.
+    """
     started = time.perf_counter()
 
     prepared = await asyncio.to_thread(prepare_for_ocr, raw)
@@ -72,11 +81,19 @@ async def review_label(
             cache.put(prepared.sha256, observations)
 
     extraction = to_extraction(observations)
+    result = review(record, extraction)
+
+    if second_opinion is not None:
+        result, telemetry["second_opinion"] = await apply_second_opinion(
+            record, extraction, result, raw, second_opinion)
+    if triage is not None:
+        result = result.model_copy(update={"triage": await triage.score(result)})
+
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     telemetry["total_ms"] = elapsed_ms
 
     return ReviewBundle(
-        result=review(record, extraction, elapsed_ms=elapsed_ms),
+        result=result.model_copy(update={"elapsed_ms": elapsed_ms}),
         extraction=extraction,
         prepared=prepared,
         telemetry=telemetry,

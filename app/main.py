@@ -17,22 +17,28 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.assist.second_opinion import build_reader
+from app.assist.triage import build_triage
 from app.config import REPO_ROOT, load_settings
 from app.extract.factory import build_extractor
 from app.extract.imageprep import UnreadableImageError
 from app.extract.stub import StubExtractionMissing
 from app.models import ApplicationRecord
 from app.pipeline import ObservationCache, review_label
+from app.ratelimit import RateLimitMiddleware, TokenBuckets
 from app.records import parse_records
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
 SAMPLE_BATCH = REPO_ROOT / "fixtures" / "records" / "batch-sample.csv"
 
-# The three seeded demos. A grader rarely arrives holding label images, so the
-# tool has to be able to demonstrate itself: one compliant label, one with the
-# defect Jenny described, one with a self-contradictory alcohol statement.
-EXAMPLE_IDS = ("clean_01", "warning_title_case", "proof_inconsistent")
+# The seeded demos. A grader rarely arrives holding label images, so the tool
+# has to be able to demonstrate itself: a compliant label, the defect Jenny
+# described, a self-contradictory alcohol statement, a brand one letter off
+# (a referral, with triage), and a tilted photograph (the evidence boxes follow
+# the tilt).
+EXAMPLE_IDS = ("clean_01", "warning_title_case", "proof_inconsistent", "brand_near_miss",
+               "photo_skewed")
 
 # Fixture ids are file stems. Anything else is not an example, whatever the
 # filesystem might make of it.
@@ -45,15 +51,31 @@ app = FastAPI(
     title="TTB Label Verification Prototype",
     description=(
         "Checks alcohol beverage label artwork against the COLA application record. "
-        "Local OCR, deterministic rules, nothing stored, nothing leaves the machine."
+        "Local OCR, deterministic rules, nothing stored. The default configuration "
+        "makes no outbound call; the optional second opinion and triage features are "
+        "off unless a key is set, and neither can reject a label."
     ),
-    version="0.9",
+    version="1.0",
+)
+app.add_middleware(
+    RateLimitMiddleware,
+    buckets=TokenBuckets(max(1, settings.rate_limit_per_minute)),
+    trust_proxy_headers=settings.trust_proxy_headers,
 )
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
 _extractor = None
 _gate: asyncio.Semaphore | None = None
+_assist: tuple | None = None
+
+
+def get_assist():
+    """(second-opinion reader, triage provider), each None when not configured."""
+    global _assist
+    if _assist is None:
+        _assist = (build_reader(settings), build_triage(settings))
+    return _assist
 
 
 def get_extractor():
@@ -106,7 +128,10 @@ async def index(request: Request):
         "examples": examples,
         "extractor": settings.extractor,
         "batch_concurrency": max(1, settings.max_batch_concurrency),
+        "max_batch_labels": settings.max_batch_labels,
         "sample_batch": SAMPLE_BATCH.is_file(),
+        "second_opinion": get_assist()[0].name if get_assist()[0] else None,
+        "triage": get_assist()[1].name if get_assist()[1] else None,
     })
 
 
@@ -135,8 +160,10 @@ async def example_batch():
 
 async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
     try:
+        reader, triage = get_assist()
         async with review_gate():
-            bundle = await review_label(raw, record, get_extractor(), cache=cache)
+            bundle = await review_label(raw, record, get_extractor(), cache=cache,
+                                        second_opinion=reader, triage=triage)
     except UnreadableImageError as exc:
         raise HTTPException(400, str(exc)) from exc
     except StubExtractionMissing as exc:
@@ -152,6 +179,8 @@ async def _run(raw: bytes, record: ApplicationRecord) -> JSONResponse:
         "elapsed_ms": bundle.result.elapsed_ms,
         "checks": [c.model_dump() for c in bundle.result.checks],
         "notes": bundle.extraction.notes,
+        "boxes": bundle.extraction.field_boxes,
+        "triage": bundle.result.triage.model_dump() if bundle.result.triage else None,
         "image": {
             "original": list(bundle.prepared.original_size),
             "processed": list(bundle.prepared.final_size),
@@ -226,6 +255,12 @@ async def api_batch_records(records: UploadFile):
         raise HTTPException(413, "That records file is too large.")
 
     parsed = parse_records(raw, records.filename or "")
+    if len(parsed.records) > settings.max_batch_labels:
+        raise HTTPException(
+            400,
+            f"That file has {len(parsed.records)} records. The limit is "
+            f"{settings.max_batch_labels} per batch; split it into smaller files.",
+        )
     if not parsed.ok:
         raise HTTPException(
             400,

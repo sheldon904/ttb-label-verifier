@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-eval:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Tesseract
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: python -m ruff check app tests eval
+
+      - name: Tests
+        run: python -m pytest -q
+
+      # The evaluation is the claim the README makes. It fails the build on any
+      # harmful outcome: a compliant label rejected, or a defective one passed.
+      - name: Evaluation, full OCR pipeline
+        run: python -m eval.run --concurrency 1
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: eval/out/report.md
+
+  container:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t ttb-label-verifier .
+      - name: Start it and check it answers
+        run: |
+          docker run -d --name app -p 8000:8000 ttb-label-verifier
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/healthz && break; sleep 1; done
+          curl -fsS -X POST http://127.0.0.1:8000/api/review/example/clean_01 | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['verdict']=='pass', d; print('clean_01:', d['verdict'])"
+          curl -fsS -X POST http://127.0.0.1:8000/api/review/example/warning_title_case | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['verdict']=='fail', d; print('warning_title_case:', d['verdict'])"

@@ -72,4 +72,20 @@ def to_extraction(observations: dict) -> LabelExtraction:
             for k, v in (observations.get("field_confidence") or {}).items()
             if isinstance(v, (int, float))
         },
+        field_boxes={
+            str(k): [[float(x), float(y)] for x, y in v]
+            for k, v in (observations.get("field_boxes") or {}).items()
+            if _is_quad(v)
+        },
+    )
+
+
+def _is_quad(value: object) -> bool:
+    """Four [x, y] points, each a fraction of the image. Anything else is dropped."""
+    if not isinstance(value, list) or len(value) != 4:
+        return False
+    return all(
+        isinstance(p, list) and len(p) == 2
+        and all(isinstance(c, (int, float)) and 0.0 <= c <= 1.0 for c in p)
+        for p in value
     )

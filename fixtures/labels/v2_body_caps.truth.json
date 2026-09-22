@@ -1,0 +1,29 @@
+{
+  "id": "v2_body_caps",
+  "description": "Second template: whole statement in capitals; 16.22 regulates only the prefix",
+  "record": {
+    "cola_id": "25-006",
+    "brand_name": "Old Tom Distillery",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "alcohol_content_pct": 45.0,
+    "net_contents": "750 mL",
+    "bottler_name": "Old Tom Distilling Co.",
+    "bottler_address": "Bardstown, Kentucky",
+    "country_of_origin": "Product of the United States"
+  },
+  "observations": {
+    "brand_name": "OLD TOM DISTILLERY",
+    "class_type": "Kentucky Straight Bourbon Whiskey",
+    "alcohol_statement": "45% Alc./Vol. (90 Proof)",
+    "net_contents": "750 mL",
+    "bottler_name": "Old Tom Distilling Co.",
+    "bottler_address": "Bardstown, Kentucky",
+    "country_of_origin": "Product of the United States",
+    "warning_text": "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES DURING PREGNANCY BECAUSE OF THE RISK OF BIRTH DEFECTS. (2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.",
+    "warning_prefix_is_bold": true,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": []
+}

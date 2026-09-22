@@ -26,8 +26,8 @@ WARNING_END_PHRASE = "HEALTH PROBLEMS"
 
 _ABV_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:%|percent\b)", re.IGNORECASE)
 _VOLUME_RE = re.compile(
-    r"\d+(?:[.,]\d+)?\s*(?:ml|mL|ML|millilitres?|milliliters?|cl|cL|CL|centilitres?|"
-    r"centiliters?|l|L|litres?|liters?)\b"
+    r"\d+(?:[.,]\d+)?\s*(?:[Ff][Ll]\.?\s*[Oo][Zz]|[Ff]luid\s+[Oo]unces?|ml|mL|ML|"
+    r"millilitres?|milliliters?|cl|cL|CL|centilitres?|centiliters?|l|L|litres?|liters?)\b"
 )
 _COUNTRY_RE = re.compile(r"\b(?:product|produce)\s+of\b|\bimported\b", re.IGNORECASE)
 
@@ -87,6 +87,31 @@ def build_lines(words: list[Word]) -> list[Line]:
         ln.words.sort(key=lambda w: w.left)
     lines.sort(key=lambda ln: (ln.top, ln.words[0].left))
     return lines
+
+
+_BARE_NUMBER = re.compile(r"^\d+(?:[.,]\d+)?$")
+_HAS_WORD = re.compile(r"[A-Za-z]{2,}")
+
+
+def rescue_units(lines: list[Line], weak: list[Word]) -> None:
+    """Re-attach a unit Tesseract read correctly but scored near zero.
+
+    Found on the second fixture template: Georgia's "12 FL OZ" came back as
+    "12" at 96% confidence and "FL", "OZ" at 0%, below the detection floor, so
+    the unit was discarded and the label failed for a missing net contents
+    statement. Only this shape is rescued -- a bare number whose low-scored
+    neighbours on the same line spell a volume unit -- and the rescued words
+    keep their scores, so the line's confidence drops and nothing read this
+    way can reject.
+    """
+    for ln in lines:
+        if not _BARE_NUMBER.match(ln.text.strip()):
+            continue
+        key, right = ln.words[0].line_key, ln.words[-1].right
+        tail = sorted((w for w in weak if w.line_key == key and w.left >= right),
+                      key=lambda w: w.left)[:3]
+        if tail and _VOLUME_RE.search(ln.text + " " + " ".join(w.text for w in tail)):
+            ln.words.extend(tail)
 
 
 def find_warning_start(lines: list[Line]) -> int | None:
@@ -169,10 +194,12 @@ def pick_brand_and_class(
         return None, None, 0.0
 
     brand_idx, brand_line = max(candidates, key=lambda pair: pair[1].height)
+    brand_lines = brand_block(lines, brand_idx, exclude)
+    last_brand = max(lines.index(ln) for ln in brand_lines)
 
     after = [
         (i, ln) for i, ln in candidates
-        if i > brand_idx and ln.height < brand_line.height * 0.92
+        if i > last_brand and ln.height < brand_line.height * 0.92
         and not _ABV_RE.search(ln.text) and not _VOLUME_RE.search(ln.text)
     ]
     class_type = after[0][1].text if after else None
@@ -189,9 +216,38 @@ def pick_brand_and_class(
     median_height = sorted(body)[len(body) // 2] if body else 0
     dominance = (brand_line.height / median_height) if median_height else 0.0
 
-    return (brand_line.text.strip() or None,
+    brand = " ".join(ln.text.strip() for ln in brand_lines).strip()
+    return (brand or None,
             (class_type.strip() if class_type else None),
             dominance)
+
+
+def brand_block(lines: list[Line], idx: int, exclude: set[int]) -> list[Line]:
+    """The brand line plus any line directly above or below it in the same type.
+
+    A long brand set large wraps: "COPPER RIDGE" over "RESERVE". Taking only
+    the tallest line read the brand as "COPPER RIDGE" and failed a compliant
+    label against "Copper Ridge Reserve". Found on the second fixture template,
+    where the verdict happened to be right for another reason, which is why
+    the evaluation now also checks that no row fails unless it was meant to.
+    """
+    anchor = lines[idx]
+    block = [anchor]
+
+    def same_type(ln: Line) -> bool:
+        return abs(ln.height - anchor.height) <= anchor.height * 0.12 and bool(ln.text.strip())
+
+    j = idx - 1
+    while j >= 0 and j not in exclude and same_type(lines[j]) \
+            and block[0].top - lines[j].bottom <= anchor.height * 1.2:
+        block.insert(0, lines[j])
+        j -= 1
+    j = idx + 1
+    while j < len(lines) and j not in exclude and same_type(lines[j]) \
+            and lines[j].top - block[-1].bottom <= anchor.height * 1.2:
+        block.append(lines[j])
+        j += 1
+    return block
 
 
 def first_match(lines: list[Line], pattern: re.Pattern, exclude: set[int]) -> str | None:
@@ -217,6 +273,13 @@ def pick_net_contents(lines: list[Line], exclude: set[int]) -> str | None:
         # Skip a volume that is really part of the alcohol statement line.
         if m and not _ABV_RE.search(ln.text):
             return m.group(0).strip()
+    # A number standing alone where the statements are is a quantity whose
+    # unit was not read. Reporting it makes the check say "could not read the
+    # volume" (a referral) rather than "there is no net contents statement"
+    # (a rejection).
+    for i, ln in enumerate(lines):
+        if i not in exclude and _BARE_NUMBER.match(ln.text.strip()):
+            return ln.text.strip()
     return None
 
 
@@ -253,6 +316,8 @@ def pick_bottler(
         if statement_end < i < upper_bound and i not in exclude and ln.text.strip()
         and not _ABV_RE.search(ln.text) and not _VOLUME_RE.search(ln.text)
         and not _COUNTRY_RE.search(ln.text)
+        # A name has letters. A bare number here is a quantity OCR half-read.
+        and _HAS_WORD.search(ln.text)
     ]
     if not block:
         return None, None

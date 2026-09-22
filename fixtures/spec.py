@@ -33,6 +33,11 @@ class LabelSpec:
     warning_text: str | None = STATUTORY_WARNING
     warning_prefix_bold: bool = True
     warning_point_size: int = 13
+    # "classic": centred sans-serif, warning last. "modern": left-aligned serif
+    # with a line of small print under the warning. The second template exists
+    # to find out whether the layout heuristics generalise beyond the first.
+    template: str = "classic"
+    footer_text: str | None = None
 
 
 @dataclass
@@ -91,6 +96,33 @@ COPPER_RIDGE = dict(
     bottler_address="Inverness, Scotland",
     country_of_origin="Product of Scotland",
 )
+
+
+BELLE_RIVE = dict(
+    brand_name="CHATEAU BELLE RIVE",
+    class_type="Cabernet Sauvignon",
+    alcohol_statement="13.5% Alc./Vol.",
+    net_contents="750 mL",
+    bottler_name="Belle Rive Cellars",
+    bottler_address="Napa, California",
+    country_of_origin="Product of the United States",
+)
+
+HARBOR_LIGHT = dict(
+    brand_name="HARBOR LIGHT",
+    class_type="India Pale Ale",
+    alcohol_statement="6.5% ALC/VOL",
+    net_contents="12 FL OZ",
+    bottler_name="Harbor Light Brewing Co.",
+    bottler_address="Portland, Maine",
+    country_of_origin="Product of the United States",
+)
+
+BODY_CAPS_WARNING = "GOVERNMENT WARNING: " + STATUTORY_WARNING[len("GOVERNMENT WARNING: "):].upper()
+
+
+def _modern(base: dict, footer: str = "www.example-distillery.com", **overrides) -> LabelSpec:
+    return LabelSpec(**{**base, **overrides}, template="modern", footer_text=footer)
 
 
 def _record(cola_id: str, base: dict, **overrides) -> dict:
@@ -301,6 +333,77 @@ def build_catalog() -> list[Fixture]:
         expected_verdict="fail",
         expected_failing_fields=["government_warning"],
         degradation=Degradation(rotate_deg=-6.0, blur_radius=0.8),
+        truth_bold=True,
+    ))
+
+    # --- second template: does any of this generalise? ---------------------
+    f.append(Fixture(
+        id="v2_wine_clean",
+        description="Second template: compliant wine, serif, web address under the warning",
+        spec=_modern(BELLE_RIVE, footer="www.bellerive.example"),
+        record=_record("25-001", BELLE_RIVE),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v2_malt_floz",
+        description="Second template: '12 FL OZ' on the label, '355 mL' on the application",
+        spec=_modern(HARBOR_LIGHT, footer="Brewed and canned in Portland, Maine"),
+        record=_record("25-002", HARBOR_LIGHT, net_contents="355 mL"),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v2_malt_floz_wrong",
+        description="Second template: '16 FL OZ' on the label, '355 mL' on the application",
+        spec=_modern(HARBOR_LIGHT, net_contents="16 FL OZ"),
+        record=_record("25-003", HARBOR_LIGHT, net_contents="355 mL"),
+        expected_verdict="fail",
+        expected_failing_fields=["net_contents"],
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v2_import_wrong_country",
+        description="Second template: Scotch declared Scottish, label says Canada",
+        spec=_modern(COPPER_RIDGE, country_of_origin="Product of Canada"),
+        record=_record("25-004", COPPER_RIDGE),
+        expected_verdict="fail",
+        expected_failing_fields=["country_of_origin"],
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v2_title_case",
+        description="Second template: title-case warning prefix",
+        spec=_modern(OLD_TOM, warning_text=TITLE_CASE_WARNING),
+        record=_record("25-005", OLD_TOM),
+        expected_verdict="fail",
+        expected_failing_fields=["government_warning"],
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v2_body_caps",
+        description="Second template: whole statement in capitals; 16.22 regulates only the prefix",
+        spec=_modern(OLD_TOM, warning_text=BODY_CAPS_WARNING),
+        record=_record("25-006", OLD_TOM),
+        expected_verdict="pass",
+        truth_bold=True,
+    ))
+    f.append(Fixture(
+        id="v2_body_caps_not_bold",
+        description="Second template: whole statement in capitals, prefix in regular weight",
+        spec=_modern(OLD_TOM, warning_text=BODY_CAPS_WARNING, warning_prefix_bold=False),
+        record=_record("25-008", OLD_TOM),
+        expected_verdict="flag",
+        expected_failing_fields=["warning_typography"],
+        truth_bold=False,
+    ))
+    f.append(Fixture(
+        id="v2_photo_skewed",
+        description="Second template: compliant wine photographed at an angle",
+        spec=_modern(BELLE_RIVE, footer="www.bellerive.example"),
+        record=_record("25-007", BELLE_RIVE),
+        expected_verdict="pass",
+        degradation=Degradation(rotate_deg=5.0),
         truth_bold=True,
     ))
 

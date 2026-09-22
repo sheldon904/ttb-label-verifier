@@ -21,8 +21,13 @@ COPY fixtures/records ./fixtures/records
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
 
+# Both model features are off in the image as shipped. Setting SECOND_OPINION or
+# TRIAGE=jev with their credentials at run time is the only way to enable an
+# outbound call.
 ENV LABEL_EXTRACTOR=ocr \
     MAX_BATCH_CONCURRENCY=4 \
+    SECOND_OPINION=off \
+    TRIAGE=heuristic \
     PORT=8000
 
 EXPOSE 8000

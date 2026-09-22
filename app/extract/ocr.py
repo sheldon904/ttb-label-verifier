@@ -56,6 +56,22 @@ BOLD_INK_RATIO_HIGH = 1.32   # at or above: bold
 BOLD_INK_RATIO_LOW = 1.24    # at or below: regular
                              # between the two: not determinable
 
+# Those two numbers compare a capitals prefix against a mixed-case body, and
+# about 0.2 of the ratio is the capitals rather than the weight. When prefix
+# and body share a case -- a body set entirely in capitals, or a title-case
+# prefix over mixed case -- only weight is left, and the band has to move.
+# Measured on the second fixture template and the title-case fixtures:
+#     bold prefix, same case      1.08, 1.10, 1.11, 1.20
+#     regular prefix, same case   0.96
+# One regular sample again, so the band keeps an undecided zone.
+SAME_CASE_BOLD_HIGH = 1.10
+SAME_CASE_BOLD_LOW = 1.04
+
+
+def _is_capitals(words) -> bool:
+    letters = "".join(c for w in words for c in w.text if c.isalpha())
+    return bool(letters) and sum(c.isupper() for c in letters) / len(letters) >= 0.6
+
 # A label whose brand is no larger than its body copy has not been read
 # correctly -- see layout.pick_brand_and_class. Below this the photograph is
 # treated as too degraded to support any rejection.
@@ -100,7 +116,7 @@ class OcrExtractor:
 
     # --- low level -------------------------------------------------------
 
-    def _read(self, image: Image.Image) -> tuple[list[Word], int]:
+    def _read(self, image: Image.Image) -> tuple[list[Word], int, list[Word]]:
         """One Tesseract pass: the words it resolved, and a count of the
         text-like regions it saw but could not.
 
@@ -122,6 +138,7 @@ class OcrExtractor:
                 "TESSERACT_CMD to the binary."
             ) from exc
         words: list[Word] = []
+        weak: list[Word] = []
         unresolved = 0
         for i, text in enumerate(data["text"]):
             text = (text or "").strip()
@@ -131,19 +148,21 @@ class OcrExtractor:
                 conf = float(data["conf"][i])
             except (TypeError, ValueError):
                 conf = -1.0
-            if conf < DETECTION_CONF:
-                if conf >= 0:
-                    unresolved += 1
-                continue
-            words.append(Word(
+            word = Word(
                 text=text,
                 left=int(data["left"][i]), top=int(data["top"][i]),
                 width=int(data["width"][i]), height=int(data["height"][i]),
-                conf=conf,
+                conf=max(conf, 0.0),
                 line_key=(int(data["block_num"][i]), int(data["par_num"][i]),
                           int(data["line_num"][i])),
-            ))
-        return words, unresolved
+            )
+            if conf < DETECTION_CONF:
+                if conf >= 0:
+                    unresolved += 1
+                    weak.append(word)
+                continue
+            words.append(word)
+        return words, unresolved, weak
 
     # --- typography ------------------------------------------------------
 
@@ -188,9 +207,12 @@ class OcrExtractor:
             return None
 
         ratio = prefix_ratio / body_ratio
-        if ratio >= BOLD_INK_RATIO_HIGH:
+        same_case = _is_capitals(prefix_words) == _is_capitals(body_words)
+        high, low = ((SAME_CASE_BOLD_HIGH, SAME_CASE_BOLD_LOW) if same_case
+                     else (BOLD_INK_RATIO_HIGH, BOLD_INK_RATIO_LOW))
+        if ratio >= high:
             return True
-        if ratio <= BOLD_INK_RATIO_LOW:
+        if ratio <= low:
             return False
         return None
 
@@ -212,8 +234,9 @@ class OcrExtractor:
         started = time.perf_counter()
         image = prepared.image
 
-        words, unresolved = self._read(image)
+        words, unresolved, weak = self._read(image)
         lines = layout.build_lines(words)
+        layout.rescue_units(lines, weak)
 
         warning_text, warning_block = layout.extract_warning(lines)
         warning_indices = {i for i, ln in enumerate(lines) if ln in warning_block}
@@ -264,6 +287,48 @@ class OcrExtractor:
                 "not reliable enough to reject it"
             )
 
+        def lines_for(value: str | None) -> list[Line]:
+            if not value:
+                return []
+            return [ln for ln in lines if value in ln.text or ln.text in value][:1]
+
+        def quad(words_in: list[Word]) -> list[list[float]] | None:
+            if not words_in:
+                return None
+            pad = 6
+            return prepared.to_display_quad(
+                min(w.left for w in words_in) - pad, min(w.top for w in words_in) - pad,
+                max(w.right for w in words_in) + pad, max(w.bottom for w in words_in) + pad,
+            )
+
+        def box_of(value: str | None) -> list[list[float]] | None:
+            return quad([w for ln in lines_for(value) for w in ln.words])
+
+        def brand_box() -> list[list[float]] | None:
+            if not brand:
+                return None
+            parts = [ln for ln in lines if ln.text.strip() and ln.text.strip() in brand]
+            tallest = max((ln.height for ln in parts), default=0)
+            return quad([w for ln in parts if ln.height >= tallest * 0.85 for w in ln.words])
+
+        prefix_words = [w for w in (warning_block[0].words if warning_block else [])
+                        if w.text.upper().strip(":").strip() in ("GOVERNMENT", "WARNING")]
+        # Where each field was read, for the agent to see. Evidence only: no
+        # rule reads these.
+        field_boxes = {
+            key: box for key, box in {
+                "brand_name": brand_box(),
+                "class_type": box_of(class_type),
+                "alcohol_content": box_of(alcohol),
+                "net_contents": box_of(net_contents),
+                "bottler_name": box_of(bottler_name),
+                "bottler_address": box_of(bottler_address),
+                "country_of_origin": box_of(country),
+                "government_warning": quad([w for ln in warning_block for w in ln.words]),
+                "warning_typography": quad(prefix_words),
+            }.items() if box is not None
+        }
+
         def line_conf(value: str | None) -> float | None:
             """Confidence of the line a field was taken from.
 
@@ -291,6 +356,7 @@ class OcrExtractor:
             "warning_prefix_is_bold": prefix_bold,
             "warning_legibility": legibility,
             "legibility_notes": notes,
+            "field_boxes": field_boxes,
             "field_confidence": {
                 key: (DEGRADED_CONFIDENCE if degraded else value)
                 for key, value in {

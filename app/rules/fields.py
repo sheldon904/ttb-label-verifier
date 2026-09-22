@@ -149,6 +149,7 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None) -> 
             field="alcohol_content", verdict=Verdict.FLAG, observed=statement,
             expected=f"{expected_pct}% Alc./Vol." if expected_pct is not None else None,
             reason="Could not parse a percentage from the alcohol statement.", citation=citation,
+            read_uncertain=True,
         ))
     elif expected_pct is None:
         results.append(CheckResult(
@@ -194,19 +195,33 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None) -> 
 
 # --- net contents ----------------------------------------------------------
 
-_QTY = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ml|millilitre|milliliter|l|liter|litre|cl|centilitre|centiliter)\b",
-                  re.IGNORECASE)
+_QTY = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*"
+    r"(fl\.?\s*oz|fluid\s+ounces?|ml|millilitres?|milliliters?|cl|centilitres?|centiliters?"
+    r"|l|liters?|litres?)(?![a-z])",
+    re.IGNORECASE,
+)
+# US malt beverages are labelled in fluid ounces (27 CFR 7.70); 1 US fl oz is
+# 29.5735 mL, so "12 FL OZ" and "355 mL" are the same container.
 _TO_ML = {"ml": 1.0, "millilitre": 1.0, "milliliter": 1.0,
+          "millilitres": 1.0, "milliliters": 1.0,
           "cl": 10.0, "centilitre": 10.0, "centiliter": 10.0,
-          "l": 1000.0, "liter": 1000.0, "litre": 1000.0}
+          "centilitres": 10.0, "centiliters": 10.0,
+          "l": 1000.0, "liter": 1000.0, "litre": 1000.0, "liters": 1000.0, "litres": 1000.0,
+          "floz": 29.5735, "fluidounce": 29.5735, "fluidounces": 29.5735}
+
+# A converted fluid-ounce volume will not land on a whole millilitre, so the
+# comparison allows 1 mL. No two standard container sizes are that close.
+NET_CONTENTS_TOLERANCE_ML = 1.0
 
 
 def parse_net_contents_ml(text: str) -> float | None:
-    """'750 mL' == '750ml' == '75 cl' == '0.75 L'."""
+    """'750 mL' == '750ml' == '75 cl' == '0.75 L'; '12 FL OZ' == 354.9 mL."""
     m = _QTY.search(text)
     if not m:
         return None
-    return float(m.group(1).replace(",", ".")) * _TO_ML[m.group(2).lower()]
+    unit = re.sub(r"[^a-z]", "", m.group(2).lower())
+    return float(m.group(1).replace(",", ".")) * _TO_ML[unit]
 
 
 def check_net_contents(expected: str | None, observed: str | None) -> CheckResult:
@@ -227,8 +242,9 @@ def check_net_contents(expected: str | None, observed: str | None) -> CheckResul
         return CheckResult(
             field="net_contents", verdict=Verdict.FLAG, expected=expected, observed=observed,
             reason="Could not parse a volume from one or both values.", citation=citation,
+            read_uncertain=obs_ml is None,
         )
-    if abs(exp_ml - obs_ml) < 0.5:
+    if abs(exp_ml - obs_ml) <= NET_CONTENTS_TOLERANCE_ML:
         return CheckResult(
             field="net_contents", verdict=Verdict.PASS, expected=expected, observed=observed,
             reason=f"Both resolve to {obs_ml:g} mL.", citation=citation,
@@ -422,7 +438,7 @@ def check_country_of_origin(expected: str | None, observed: str | None) -> Check
             observed=observed,
             reason="The country of origin statement was found but the country itself "
                    "could not be read. Confirm against the artwork.",
-            citation=citation,
+            citation=citation, read_uncertain=True,
         )
 
     score = fuzz.token_set_ratio(normalize_brand(country_name(expected)),

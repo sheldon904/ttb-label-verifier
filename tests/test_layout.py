@@ -12,6 +12,7 @@ from app.extract.layout import (
     closes_statement,
     extract_warning,
     pick_alcohol_statement,
+    pick_brand_and_class,
 )
 from app.models import Verdict
 from app.rules.warning import STATUTORY_WARNING, check_warning_text
@@ -84,3 +85,21 @@ def test_build_lines_orders_by_position():
 def test_alcohol_statement_spelled_out_is_found():
     lines = [line("BRAND", 0, 46), line("Alcohol 45 percent by volume", 100)]
     assert pick_alcohol_statement(lines, set()) == "Alcohol 45 percent by volume"
+
+
+def test_a_brand_that_wraps_onto_two_lines_is_read_whole():
+    lines = [line("COPPER RIDGE", 173, 77), line("RESERVE", 315, 77),
+             line("Single Malt Whisky", 461, 51), line("43% Alc./Vol. (86 Proof)", 664, 49),
+             line("Copper Ridge Distillers", 882, 36), line("Inverness, Scotland", 930, 36),
+             line("Product of Scotland", 980, 30), line("GOVERNMENT WARNING: (1) According", 1500, 24)]
+    brand, class_type, _ = pick_brand_and_class(lines, set())
+    assert brand == "COPPER RIDGE RESERVE"
+    assert class_type == "Single Malt Whisky"
+
+
+def test_a_class_line_in_smaller_type_is_not_merged_into_the_brand():
+    lines = [line("OLD TOM DISTILLERY", 100, 46), line("Kentucky Straight Bourbon Whiskey", 160, 24),
+             line("45% Alc./Vol. (90 Proof)", 260, 26), line("x", 1000, 24)]
+    brand, class_type, _ = pick_brand_and_class(lines, set())
+    assert brand == "OLD TOM DISTILLERY"
+    assert class_type == "Kentucky Straight Bourbon Whiskey"

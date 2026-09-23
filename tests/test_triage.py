@@ -9,7 +9,14 @@ import json
 
 import httpx
 
-from app.assist.triage import HeuristicTriage, JevTriage, build_triage, triage_state
+from app.assist.triage import (
+    OIDC_HEADER,
+    HeuristicTriage,
+    JevTriage,
+    build_triage,
+    triage_for_request,
+    triage_state,
+)
 from app.config import load_settings
 from app.models import ApplicationRecord, LabelExtraction, Verdict
 from app.rules.engine import review
@@ -101,3 +108,35 @@ def test_jev_without_a_key_falls_back_to_the_local_baseline():
     s = replace(load_settings(), triage="jev", ai_gateway_api_key=None)
     assert build_triage(s).name == "heuristic"
     assert build_triage(replace(s, triage="off")) is None
+
+
+def test_a_deployment_asks_jev_with_the_token_each_request_brings():
+    """A running Vercel deployment has no gateway credential in its
+    environment: each request carries one in a header. Read from the
+    environment alone, the first deployment never asked Jev."""
+    from dataclasses import replace
+    s = replace(load_settings(), triage="jev", ai_gateway_api_key=None)
+    started = build_triage(s)
+    assert triage_for_request(started, s, None) is started
+    assert triage_for_request(started, s, "oidc-token").name == "typesafe-ai/jev"
+    keyed = replace(s, ai_gateway_api_key="gw-key")
+    assert triage_for_request(build_triage(keyed), keyed, "oidc-token")._key == "gw-key"
+    assert triage_for_request(None, replace(s, triage="off"), "oidc-token") is None
+
+
+def test_the_footer_names_the_triage_a_request_gets():
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    from app import main
+    before = main.settings
+    main.settings = replace(load_settings(), extractor="stub", triage="jev", ai_gateway_api_key=None)
+    main._assist = None
+    try:
+        client = TestClient(main.app)
+        assert "Referral triage: <strong>heuristic</strong>" in client.get("/").text
+        page = client.get("/", headers={OIDC_HEADER: "oidc-token"}).text
+        assert "Referral triage: <strong>typesafe-ai/jev</strong>" in page
+    finally:
+        main.settings, main._assist = before, None

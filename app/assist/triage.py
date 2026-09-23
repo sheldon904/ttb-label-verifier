@@ -15,12 +15,15 @@ findings removes that surface.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Protocol
 
 import httpx
 
 from app.models import CheckResult, ReviewResult, Triage, Verdict
+
+log = logging.getLogger(__name__)
 
 _SIMILARITY = re.compile(r"similarity (\d+)%")
 _CONFIDENCE = re.compile(r"low confidence \((\d+)%\)")
@@ -152,7 +155,11 @@ class JevTriage:
                 r.raise_for_status()
                 p = r.json()["answers"]["genuine_defect"]["probability"]
             return Triage(probability=float(p), provider=self.name)
-        except Exception:  # noqa: BLE001 - triage is advisory; fall back rather than go blank
+        except Exception as exc:  # noqa: BLE001 - triage is advisory; fall back rather than go blank
+            # The page shows "heuristic" either way; the log says why.
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            log.warning("Jev unavailable (%s%s); the local heuristic ordered this referral",
+                        type(exc).__name__, f" {status}" if status else "")
             return await HeuristicTriage().score(result)
 
 
@@ -163,3 +170,19 @@ def build_triage(settings) -> TriageProvider | None:
         # "jev" without a key falls back to the local baseline rather than to nothing.
         return HeuristicTriage()
     return None
+
+
+# A running Vercel deployment has no credential for AI Gateway in its
+# environment. Each request brings a short-lived OIDC token in this header;
+# VERCEL_OIDC_TOKEN exists only in builds and in `vercel env pull` files. The
+# first deployment read the environment alone, so Jev never ran on it.
+OIDC_HEADER = "x-vercel-oidc-token"
+
+
+def triage_for_request(provider: TriageProvider | None, settings,
+                       oidc_token: str | None) -> TriageProvider | None:
+    """Jev with the request's own token when no key is configured; otherwise
+    the provider built at start."""
+    if oidc_token and settings.triage == "jev" and not settings.ai_gateway_api_key:
+        return JevTriage(oidc_token, settings.triage_model)
+    return provider

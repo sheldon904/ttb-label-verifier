@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.assist.second_opinion import build_reader, eligible_rows
-from app.assist.triage import build_triage
+from app.assist.triage import OIDC_HEADER, build_triage, triage_for_request
 from app.config import REPO_ROOT, load_settings
 from app.extract.factory import build_extractor
 from app.extract.imageprep import UnreadableImageError, browser_preview
@@ -143,6 +143,11 @@ def get_assist():
     return _assist
 
 
+def triage_for(request: Request):
+    """The triage provider for this request (see triage_for_request)."""
+    return triage_for_request(get_assist()[1], settings, request.headers.get(OIDC_HEADER))
+
+
 def get_extractor():
     """Built lazily so the page still loads (and explains itself) if OCR is misconfigured."""
     global _extractor
@@ -202,7 +207,7 @@ async def index(request: Request):
         "max_batch_labels": settings.max_batch_labels,
         "sample_batch": SAMPLE_BATCH.is_file(),
         "second_opinion": get_assist()[0].name if get_assist()[0] else None,
-        "triage": get_assist()[1].name if get_assist()[1] else None,
+        "triage": triage_for(request).name if triage_for(request) else None,
     })
 
 
@@ -247,10 +252,10 @@ SECOND_OPINION_QUERY = Query(
 )
 
 
-async def _run(raw: bytes, record: ApplicationRecord,
+async def _run(raw: bytes, record: ApplicationRecord, request: Request,
                mode: SecondOpinionMode = "inline") -> JSONResponse:
     try:
-        reader, triage = get_assist()
+        reader, triage = get_assist()[0], triage_for(request)
         bundle = await review_label(raw, record, get_extractor(), cache=cache,
                                     second_opinion=reader if mode == "inline" else None,
                                     triage=triage, ocr_gate=review_gate())
@@ -342,6 +347,7 @@ def _record_from_form(cola_id: str, brand_name: str, alcohol_content_pct: str,
 
 @app.post("/api/review", summary="Check one label against its application", tags=["Review"])
 async def api_review(
+    request: Request,
     image: UploadFile,
     cola_id: str = Form(...),
     brand_name: str = Form(...),
@@ -367,11 +373,12 @@ async def api_review(
         raise HTTPException(413, _too_large("image", image.size or len(raw)))
     record = _record_from_form(cola_id, brand_name, alcohol_content_pct, net_contents,
                                class_type, bottler_name, bottler_address, country_of_origin)
-    return await _run(raw, record, second_opinion)
+    return await _run(raw, record, request, second_opinion)
 
 
 @app.post("/api/review/example/{example_id}", summary="Check a sample label", tags=["Samples"])
 async def api_review_example(
+    request: Request,
     example_id: str,
     cola_id: str = Form(""),
     brand_name: str | None = Form(None),
@@ -392,7 +399,7 @@ async def api_review_example(
     else:
         record = _record_from_form(cola_id, brand_name, alcohol_content_pct, net_contents,
                                    class_type, bottler_name, bottler_address, country_of_origin)
-    return await _run(ex["image_path"].read_bytes(), record, second_opinion)
+    return await _run(ex["image_path"].read_bytes(), record, request, second_opinion)
 
 
 @app.post("/api/batch/records", summary="Read a records file for a batch", tags=["Review"])

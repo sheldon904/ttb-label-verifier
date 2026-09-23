@@ -170,7 +170,7 @@ The app needs Python 3.11 or newer and Tesseract.
 
 # macOS, Linux and WSL
 make install
-make test               # 454 tests, no network, no paid calls
+make test               # 456 tests, no network, no paid calls
 make eval               # both fixture sets, one label at a time
 make eval-throughput    # the same with 8 workers
 make dev                # http://localhost:8000

@@ -85,8 +85,9 @@ def load_settings() -> Settings:
     _load_dotenv(REPO_ROOT / ".env")
     anthropic_key = _text("ANTHROPIC_API_KEY", "") or None
     openrouter_key = _text("OPENROUTER_API_KEY", "") or None
-    # On a Vercel deployment the platform's OIDC token authenticates to AI
-    # Gateway without a created key; an explicit key takes precedence.
+    # An explicit key first. VERCEL_OIDC_TOKEN is present in local development
+    # after `vercel env pull`; a running deployment sends its token with each
+    # request instead (app.assist.triage.OIDC_HEADER).
     gateway_key = _text("AI_GATEWAY_API_KEY", "") or _text("VERCEL_OIDC_TOKEN", "") or None
     return Settings(
         extractor=_text("LABEL_EXTRACTOR", "ocr").lower(),

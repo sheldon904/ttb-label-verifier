@@ -6,7 +6,7 @@ This tool checks alcohol label artwork against its COLA application. It shows a
 compliance agent what matched, what did not and why. Local OCR reads the label, plain
 rules decide, and every finding cites the regulation behind it.
 
-> **Live prototype:** _add the deployed URL here_ (see [Deployment](#deployment))
+> **Live prototype:** https://ttb-label-verifier-opal.vercel.app
 
 ![The compliant bourbon sample checked against an application edited to 40%. The alcohol row fails, and its box on the artwork is red.](docs/screenshot.png)
 
@@ -102,7 +102,8 @@ Sarah Chen's budget is 5 seconds a label. The median is 0.9 seconds on Windows a
 in the container. With 8 workers, a Windows machine with 12 logical processors checks
 314 labels a minute, so a 300-label importer batch takes about a minute. The
 container's 4 workers on 6 cores check 209 a minute and finish that batch in 1.4
-minutes.
+minutes. On the live Vercel deployment a label takes 1.6 to 2.3 seconds, and the
+52-label sample batch took 67 seconds with the second reading on.
 
 **With the second reading on**, a vision model re-reads what OCR could not. Three models
 ran on the same labels through OpenRouter:

@@ -212,7 +212,7 @@ the committed evaluation set never changes under you.
 | `SECOND_OPINION` | `auto` | `auto` uses OpenRouter, then Anthropic, whichever credential is set. `openrouter`, `anthropic` or `off` choose. |
 | `SECOND_OPINION_MODEL` | provider default | `anthropic/claude-sonnet-5` on OpenRouter, `claude-sonnet-5` on Anthropic. Any vision model on OpenRouter works. |
 | `SECOND_OPINION_DAILY_LIMIT` | 300 | Paid second readings per day per instance |
-| `AI_GATEWAY_API_KEY` | none | Lets triage ask Jev. On Vercel, the deployment's OIDC token works without it. |
+| `AI_GATEWAY_API_KEY` | none | Lets triage ask Jev. Without it, a Vercel deployment uses the token Vercel sends with each request. |
 | `TRIAGE` | `jev` | Jev when a gateway credential exists, else the local heuristic. `heuristic` or `off` choose. |
 
 The page footer states which model features are on. The evaluation calls no paid model
@@ -231,7 +231,7 @@ new project, set these variables and deploy:
 | `PORT` | `8000`. Vercel sends traffic to port 80 unless this is set. |
 | `OPENROUTER_API_KEY` | an OpenRouter credential with a credit limit, for the second reading |
 | `TRUST_PROXY_HEADERS` | `1` |
-| `AI_GATEWAY_API_KEY` | optional: the deployment's OIDC token already reaches Jev |
+| `AI_GATEWAY_API_KEY` | an AI Gateway credential, for Jev. Without one, the app uses the token Vercel sends with each request. |
 
 Leave out any variable you do not set a value for. A blank one counts as unset.
 
@@ -279,9 +279,10 @@ readings of it:
 
 ## Limitations
 
-- **Jev is unmeasured.** No AI Gateway credential was available, so Jev is tested
-  against mocked responses only. On the fixtures the local heuristic gives every
-  genuine referral a higher score than every reading problem.
+- **Jev is measured on 18 referrals.** On the live deployment it ranks a genuine referral
+  ahead of a reading problem in 72% of pairs. The local heuristic manages 46%, with 41%
+  ties. Jev scores a soft-focus photograph and one AI-generated import as likely
+  defects: [`eval/out/report-triage-jev-live.md`](eval/out/report-triage-jev-live.md).
 - **An image cannot give millimetres.** 27 CFR 16.22 sets a minimum type size and a
   maximum number of characters per inch. The tool states the minimum for the container
   so the agent knows what to check.

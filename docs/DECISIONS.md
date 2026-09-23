@@ -260,8 +260,9 @@ and, for each finding, its field, verdict, layer and markers. It adds whether a 
 reading cleared the finding, its similarity, its read confidence and warning word counts. A test
 pins that no label text reaches it. Triage only sorts referrals. Without a gateway
 credential, or when a call fails, the local heuristic answers and the row names which
-one did. That heuristic is also the baseline: on the fixtures it scores every genuine
-referral above every read problem. The request carries no zero-data-retention option,
+one did. That heuristic is also the baseline. On the live deployment's 18 referrals, Jev
+ranks a genuine referral ahead of a read problem in 72% of pairs and the heuristic in 46%,
+with 41% ties (`eval/out/report-triage-jev-live.md`). The request carries no zero-data-retention option,
 which AI Gateway reserves for paid plans; there is no label content in it to retain.
 
 ### 13. Citations by commodity
@@ -518,9 +519,9 @@ them only beside a statement in liters or milliliters.
 
 ## What I would do next
 
-1. **Measure Jev with a credential.** It is built to the documented contract and tested
-   against mocked responses. The evaluation reports what it did as soon as it runs with
-   one (`python -m eval.run --triage jev`).
+1. **Measure Jev on real referrals.** Eighteen fixture referrals are a small sample.
+   `python -m eval.run --triage jev` with an AI Gateway credential reports the same ordering
+   locally, and the decisions agents record (item 7) are the data to judge it on.
 2. **Calibrate the thresholds on real COLA artwork.** Every number here is tuned against
    37 rendered labels and checked against 15 AI-generated ones. The bold bands rest on
    one regular sample each.

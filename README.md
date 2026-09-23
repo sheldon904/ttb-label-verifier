@@ -52,8 +52,9 @@ brief and explains each decision.
 
 ## What it checks
 
-The brief lists seven elements a label must carry. The tool checks all seven, plus the
-two things the worked example adds: the proof statement and the warning's typography.
+The brief lists seven common label elements. The tool checks all seven. It also checks
+the proof statement from the sample label and the warning's typography from Jenny Park's
+interview.
 
 | Element | How the label is compared | Citation for spirits |
 |---|---|---|
@@ -289,8 +290,8 @@ Three controls kept that work honest:
 
 ## Assumptions
 
-The brief is a set of interviews with no formal requirements section, so these are my
-readings of it:
+The brief states most requirements through interviews, so these are my readings of
+it:
 
 1. **Application records arrive as CSV or JSON beside the images,** joined on the COLA
    ID. The brief never says how application data enters the system. Column names are

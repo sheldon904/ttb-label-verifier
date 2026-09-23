@@ -2,10 +2,11 @@
 
 ## Requirements traceability
 
-The brief has a section headed **Technical Requirements** whose entire content is
-"use any language you like." Every actual requirement is inside four interview
-transcripts, mixed with a school play, a $4.2M quote nobody approved and a
-colleague who prints his emails. Reading those out is the exercise.
+The brief's **Technical Requirements** section leaves the stack open and says what it
+judges: "We want to see what kind of engineering, design, and integration decisions you
+make." Most requirements sit inside four interview transcripts, mixed with a school play,
+a $4.2M quote nobody approved and a colleague who prints his emails. Reading those out
+is the exercise.
 
 Fourteen requirements come from the interviews:
 
@@ -59,8 +60,8 @@ Every verdict comes from OCR and a rule. Three things decided that:
 - **Appeals.** "The sixth word of your warning statement reads X, 27 CFR 16.21
   requires Y" is a defensible basis for a rejection. A model's judgement is harder to
   defend.
-- **Marcus's firewall**, which killed the previous vendor's features. No verdict here
-  needs egress, a credential or a vendor.
+- **Marcus's firewall**, which broke half the previous vendor's features. No verdict
+  here needs egress, a credential or a vendor.
 - **Failure mode.** Tesseract fails by losing text. A language model fails by producing
   plausible text with confidence. For an exact comparison against a statute, lost text
   is the safer failure, because the tool can detect it.
@@ -70,9 +71,9 @@ second reading recovers part of it.
 
 ### 3. Three verdicts
 
-`PASS` / `FLAG` / `FAIL`, shown as Pass, Review and Fail. Dave watched binary automation
-fail before. A system that cannot say "look at this one" pushes its own uncertainty onto
-the applicant.
+`PASS` / `FLAG` / `FAIL`, shown as Pass, Review and Fail. Dave watched automation fail
+before: a phone system meant to cut calls brought more. A system that cannot say "look at
+this one" pushes its own uncertainty onto the applicant.
 
 ### 4. Matching policy is per field
 

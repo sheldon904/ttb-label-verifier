@@ -36,6 +36,43 @@
     return Boolean(wrap && wrap.querySelector(".has-invalid-file"));
   }
 
+  /* Vercel refuses a request over 4.5 MB before the app sees it, and a phone
+     photo is often larger. OCR reads a 2200-pixel copy in any case, so a
+     larger photo is brought to that size here before it is sent. A TIFF
+     cannot be drawn in most browsers and goes as it is. */
+  var SEND_LIMIT = 4 * 1024 * 1024;
+  var OCR_EDGE = 2200;
+  var TOO_LARGE = "The hosting service accepts files up to 4.5 MB, and this one is larger. "
+                  + "Save a smaller JPEG or PNG copy and try again.";
+
+  async function fitForUpload(file) {
+    if (file.size <= SEND_LIMIT || !/^image\/(jpeg|png|webp)$/.test(file.type)
+        || !window.createImageBitmap) {
+      return file;
+    }
+    try {
+      var bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+      var scale = Math.min(1, OCR_EDGE / Math.max(bitmap.width, bitmap.height));
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      if (bitmap.close) bitmap.close();
+      var blob = await new Promise(function (resolve) {
+        canvas.toBlob(resolve, "image/jpeg", 0.92);
+      });
+      if (!blob || blob.size >= file.size) return file;
+      return new File([blob], file.name.replace(/\.[^.]*$/, "") + ".jpg", { type: "image/jpeg" });
+    } catch (err) {
+      return file;
+    }
+  }
+
+  /* The app's own refusal carries a reason; the platform's does not. */
+  function refusal(response, payload, fallback) {
+    return payload.detail || (response.status === 413 ? TOO_LARGE : fallback);
+  }
+
   initSingle();
   initBatch();
 
@@ -444,7 +481,7 @@
         var payload = await response.json().catch(function () { return {}; });
         if (mine !== generation) return;
         if (!response.ok) {
-          renderError(payload.detail || "The server returned an unexpected error.");
+          renderError(refusal(response, payload, "The server returned an unexpected error."));
           return;
         }
         var said = renderResult(payload);
@@ -491,12 +528,15 @@
       }
     }
 
-    form.addEventListener("submit", function (e) {
+    form.addEventListener("submit", async function (e) {
       e.preventDefault();
       if (fileInput.files.length) {
-        /* The artwork panel must show what is being checked. */
+        /* The artwork panel must show what is being checked: the file as
+           chosen, whatever size it is sent at. */
         showArtworkFile(fileInput.files[0]);
-        send("/api/review", { method: "POST", body: new FormData(form) });
+        var upload = new FormData(form);
+        upload.set("image", await fitForUpload(fileInput.files[0]));
+        send("/api/review", { method: "POST", body: upload });
       } else if (currentSample) {
         var body = new FormData(form);
         body.delete("image");
@@ -617,9 +657,9 @@
       return { byId: byId, unmatched: unmatched };
     }
 
-    function reviewOne(record, file) {
+    async function reviewOne(record, file) {
       var body = new FormData();
-      body.append("image", file);
+      body.append("image", await fitForUpload(file));
       body.append("cola_id", record.cola_id);
       body.append("brand_name", record.brand_name || "");
       body.append("class_type", record.class_type || "");
@@ -636,7 +676,7 @@
           return response.json().catch(function () { return {}; }).then(function (payload) {
             if (!response.ok) {
               return { cola_id: record.cola_id, verdict: "error",
-                       error: payload.detail || "Server error", checks: [] };
+                       error: refusal(response, payload, "Server error"), checks: [] };
             }
             return payload;
           });
@@ -895,9 +935,9 @@
 
       try {
         var response = await fetch("/api/batch/records", { method: "POST", body: body });
-        var parsed = await response.json();
+        var parsed = await response.json().catch(function () { return {}; });
         if (!response.ok) {
-          note(parsed.detail || "Could not read that records file.", "error");
+          note(refusal(response, parsed, "Could not read that records file."), "error");
           return;
         }
         await runBatch(parsed, imagesInput.files);

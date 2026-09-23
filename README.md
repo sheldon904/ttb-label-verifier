@@ -169,7 +169,7 @@ The app needs Python 3.11 or newer and Tesseract.
 
 # macOS, Linux and WSL
 make install
-make test               # 452 tests, no network, no paid calls
+make test               # 454 tests, no network, no paid calls
 make eval               # both fixture sets, one label at a time
 make eval-throughput    # the same with 8 workers
 make dev                # http://localhost:8000
@@ -227,13 +227,17 @@ new project, set these variables and deploy:
 
 | Variable | Value |
 |---|---|
+| `PORT` | `8000`. Vercel sends traffic to port 80 unless this is set. |
 | `OPENROUTER_API_KEY` | an OpenRouter credential with a credit limit, for the second reading |
 | `TRUST_PROXY_HEADERS` | `1` |
 | `AI_GATEWAY_API_KEY` | optional: the deployment's OIDC token already reaches Jev |
 
+Leave out any variable you do not set a value for. A blank one counts as unset.
+
 `Dockerfile.vercel` is a copy of `Dockerfile`, and a test keeps the two identical. An
 idle deployment scales to zero, so the first request after a quiet spell starts the
-container.
+container. Vercel refuses a request over 4.5 MB, so the page brings a larger photo to
+the 2,200-pixel size OCR reads before sending it.
 
 **On Azure**, where the TTB already runs, the same image suits Azure Container Apps.
 [Microsoft documents](https://learn.microsoft.com/en-us/azure/container-apps/containerapp-up)

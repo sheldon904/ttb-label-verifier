@@ -59,32 +59,50 @@ class Settings:
     triage_model: str = "typesafe-ai/jev"
 
 
+def _text(name: str, default: str) -> str:
+    """A setting, where a blank value means the default.
+
+    A hosting dashboard keeps a variable added with no value as an empty
+    string. On the first Vercel deployment a blank MAX_BATCH_CONCURRENCY
+    reached int() and the app exited before it served a page.
+    """
+    return os.environ.get(name, "").strip() or default
+
+
+def _number(name: str, default: int) -> int:
+    raw = _text(name, str(default))
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number, not {raw!r}") from None
+
+
 def _flag(name: str, default: bool = False) -> bool:
-    return os.environ.get(name, "1" if default else "0").strip().lower() in ("1", "true", "yes", "on")
+    return _text(name, "1" if default else "0").lower() in ("1", "true", "yes", "on")
 
 
 def load_settings() -> Settings:
     _load_dotenv(REPO_ROOT / ".env")
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY") or None
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY") or None
+    anthropic_key = _text("ANTHROPIC_API_KEY", "") or None
+    openrouter_key = _text("OPENROUTER_API_KEY", "") or None
     # On a Vercel deployment the platform's OIDC token authenticates to AI
     # Gateway without a created key; an explicit key takes precedence.
-    gateway_key = os.environ.get("AI_GATEWAY_API_KEY") or os.environ.get("VERCEL_OIDC_TOKEN") or None
+    gateway_key = _text("AI_GATEWAY_API_KEY", "") or _text("VERCEL_OIDC_TOKEN", "") or None
     return Settings(
-        extractor=os.environ.get("LABEL_EXTRACTOR", "ocr").lower(),
-        max_batch_concurrency=int(os.environ.get("MAX_BATCH_CONCURRENCY", "8")),
-        max_upload_bytes=int(os.environ.get("MAX_UPLOAD_BYTES", str(12 * 1024 * 1024))),
-        tesseract_cmd=os.environ.get("TESSERACT_CMD") or None,
-        rate_limit_per_minute=int(os.environ.get("RATE_LIMIT_PER_MINUTE", "600")),
+        extractor=_text("LABEL_EXTRACTOR", "ocr").lower(),
+        max_batch_concurrency=_number("MAX_BATCH_CONCURRENCY", 8),
+        max_upload_bytes=_number("MAX_UPLOAD_BYTES", 12 * 1024 * 1024),
+        tesseract_cmd=_text("TESSERACT_CMD", "") or None,
+        rate_limit_per_minute=_number("RATE_LIMIT_PER_MINUTE", 600),
         trust_proxy_headers=_flag("TRUST_PROXY_HEADERS"),
-        max_batch_labels=int(os.environ.get("MAX_BATCH_LABELS", "500")),
-        second_opinion=os.environ.get("SECOND_OPINION", "auto").strip().lower(),
+        max_batch_labels=_number("MAX_BATCH_LABELS", 500),
+        second_opinion=_text("SECOND_OPINION", "auto").lower(),
         openrouter_api_key=openrouter_key,
         anthropic_api_key=anthropic_key,
-        second_opinion_model=os.environ.get("SECOND_OPINION_MODEL", "").strip(),
-        second_opinion_daily_limit=int(os.environ.get("SECOND_OPINION_DAILY_LIMIT", "300")),
-        openrouter_data_collection=os.environ.get("OPENROUTER_DATA_COLLECTION", "deny").strip(),
-        triage=os.environ.get("TRIAGE", "jev").strip().lower(),
+        second_opinion_model=_text("SECOND_OPINION_MODEL", ""),
+        second_opinion_daily_limit=_number("SECOND_OPINION_DAILY_LIMIT", 300),
+        openrouter_data_collection=_text("OPENROUTER_DATA_COLLECTION", "deny"),
+        triage=_text("TRIAGE", "jev").lower(),
         ai_gateway_api_key=gateway_key,
-        triage_model=os.environ.get("TRIAGE_MODEL", "typesafe-ai/jev"),
+        triage_model=_text("TRIAGE_MODEL", "typesafe-ai/jev"),
     )

@@ -1,6 +1,6 @@
 {
   "id": "warning_microtype",
-  "description": "Text buried at ~6pt -- too small to judge weight, must not guess",
+  "description": "Text at about 6 pt: too small to judge weight, so it goes to an agent",
   "record": {
     "cola_id": "24-024",
     "brand_name": "Old Tom Distillery",

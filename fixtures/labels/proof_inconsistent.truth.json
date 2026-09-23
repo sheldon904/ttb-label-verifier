@@ -1,6 +1,6 @@
 {
   "id": "proof_inconsistent",
-  "description": "Label contradicts itself: 45% is 90 proof, not 80",
+  "description": "Label contradicts itself: it states 80 proof for 45%, which is 90 proof",
   "record": {
     "cola_id": "24-031",
     "brand_name": "Old Tom Distillery",

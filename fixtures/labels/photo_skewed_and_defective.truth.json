@@ -1,6 +1,6 @@
 {
   "id": "photo_skewed_and_defective",
-  "description": "Angled shot AND a title-case warning -- degradation must not mask a real defect",
+  "description": "Angled shot with a title-case warning: the photo must not hide a real defect",
   "record": {
     "cola_id": "24-054",
     "brand_name": "Old Tom Distillery",

@@ -145,7 +145,7 @@ def render_assist(summary: EvalSummary, a) -> None:
         if called:
             slowest = max(called, key=lambda o: o.total_ms)
             a(f"Slowest consulted label: {slowest.total_ms} ms (`{slowest.id}`), OCR and the "
-              "second reading together. On the page the OCR result is shown first and the "
+              "second reading together. On the page, the OCR result shows first and the "
               "second reading replaces it when it arrives.\n")
         if cleared:
             a("| fixture | expected | rows cleared |")
@@ -171,7 +171,7 @@ def render_assist(summary: EvalSummary, a) -> None:
             separated = min(o.triage_p for o in genuine) > max(o.triage_p for o in noise)
             pairs = [(g, n) for g in genuine for n in noise]
             ordered = sum(g.triage_p > n.triage_p for g, n in pairs) / len(pairs)
-            a(f"Genuine referrals ranked above read problems in **{ordered:.0%}** of pairs"
+            a(f"Genuine referrals ranked ahead of read problems in **{ordered:.0%}** of pairs"
               + (" (complete separation)." if separated else ".") + "\n")
 
 
@@ -221,23 +221,23 @@ def render(summary: EvalSummary) -> str:
         a(f"OCR engine: Tesseract {summary.engine_version}.\n")
 
     a("## Outcome safety\n")
-    a("A single accuracy number hides the distinction that matters here: "
-      "escalating a compliant label costs an agent a minute, whereas rejecting "
-      "one tells an applicant they broke the law when they did not.\n")
+    a("Accuracy alone hides the split that matters here. Escalating a compliant label "
+      "costs an agent a minute. Rejecting one tells an applicant they broke the law when "
+      "they did not.\n")
     a("| outcome | count |")
     a("|---|---|")
     a(f"| Correct | {sum(o.verdict_correct for o in summary.outcomes)} |")
     a(f"| Referred to a human when not strictly needed | {len(summary.cautious_misses)} |")
-    a(f"| Defective, referred to a human instead of rejected | {len(summary.referred_defects)} |")
+    a(f"| Defective, referred to a human to reject | {len(summary.referred_defects)} |")
     a(f"| **Wrong in a way that harms someone** | **{len(summary.unsafe_misses)}** |")
     a("")
     render_sets(summary, a)
 
     a("## Latency and throughput\n")
-    a("These are two different numbers and conflating them is misleading. Sarah "
-      "Chen's five second budget is about an agent waiting on **one** label, so it "
-      "must be measured without contention. Batch is a throughput question: under "
-      "load, per-label wall clock rises while labels per minute improves.\n")
+    a("Latency and throughput answer different questions. Sarah Chen's five-second "
+      "budget is about an agent waiting on **one** label, so this run measures it "
+      "without contention. Batch is a throughput question: under load, the time per "
+      "label rises and the labels per minute improve.\n")
     a(f"Measured at concurrency **{summary.concurrency}** "
       f"({'interactive' if summary.concurrency == 1 else 'under load'}).\n")
     a("| p50 | p95 | p99 | max |")
@@ -277,17 +277,18 @@ def render(summary: EvalSummary) -> str:
     a("## Cost\n")
     if summary.second_opinion:
         a("OCR and the rules cost nothing per label: no model, no API and no token, only "
-          "the local CPU time in the latency table above. The second reading is the one "
-          "paid step. Only referred labels go to it, and its cost is stated above.\n")
+          "the local CPU time in the latency table. The second reading is the one paid "
+          "step. Only referred labels go to it, and the second-opinion section states its "
+          "cost.\n")
     else:
         a("Nothing per label. There is no model, no API and no token. The only cost is "
-          "local CPU time, which the latency table above already states.\n")
+          "local CPU time, which the latency table states.\n")
 
     wrong = [o for o in summary.outcomes if o.wrong_fails]
     a("## Rows failed in error" + "\n")
     a("A row that fails when the fixture was not built to fail it tells an applicant "
       "something is wrong that is not, even if the label fails for another reason. "
-      "Counted as harmful above." + "\n")
+      "The harmful count includes these rows." + "\n")
     if not wrong:
         a("None." + "\n")
     else:

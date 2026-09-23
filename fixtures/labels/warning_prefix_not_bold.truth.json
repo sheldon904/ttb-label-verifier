@@ -1,6 +1,6 @@
 {
   "id": "warning_prefix_not_bold",
-  "description": "Correct text, but the prefix is set in regular weight -- advisory only",
+  "description": "Correct text with the prefix in regular weight: advisory only",
   "record": {
     "cola_id": "24-023",
     "brand_name": "Old Tom Distillery",

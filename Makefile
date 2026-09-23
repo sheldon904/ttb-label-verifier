@@ -1,4 +1,4 @@
-.PHONY: install dev test eval eval-throughput lint fixtures docker
+.PHONY: install dev test eval eval-throughput stress lint fixtures docker
 
 # The virtualenv lays its binaries out differently on Windows. Decided by the
 # OS, not by what exists: before `make install` there is no .venv to look at.
@@ -29,6 +29,11 @@ eval:
 # own file so it does not replace the latency report.
 eval-throughput:
 	$(PY) -m eval.run --concurrency 8 --out eval/out/report-throughput.md
+
+# Every compliant rendered label under 15 degradations: blur, shrinking, JPEG,
+# rotation, dimming, low contrast, noise and glare. Reports only; about 4 minutes.
+stress:
+	$(PY) -m eval.stress
 
 lint:
 	$(PY) -m ruff check app tests eval

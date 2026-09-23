@@ -1,6 +1,6 @@
 {
   "id": "v3_import_agave",
-  "description": "Third template: imported tequila; '100% Blue Agave' is the class, not the strength",
+  "description": "Third template: imported tequila; '100% Blue Agave' is part of the class",
   "record": {
     "cola_id": "26-005",
     "brand_name": "Casa Luna",

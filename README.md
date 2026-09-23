@@ -31,6 +31,25 @@ rules decide, and every finding cites the regulation behind it.
    and the brand name are required.
 7. Read the API documentation at `/docs`.
 
+## Approach
+
+- **OCR reads, rules decide.** Tesseract reads the label inside the app. Plain rules in
+  `app/rules/` compare each field with the application and the regulation, and every
+  finding cites its CFR section.
+- **Three results: Pass, Review and Fail.** A rejection has to survive an appeal. So a
+  reading the tool is unsure of sends the label to an agent and never fails it.
+- **Harm is what the evaluation gates on.** `make eval` fails if a compliant label is
+  rejected or a defective one passes, in either fixture set. CI runs it on every push,
+  and all three Tesseract builds pass it.
+- **Models assist and never decide.** A vision model's second reading can clear a
+  referral and can never reject. Jev orders the referral queue. Without their
+  credentials, the app makes no outbound call.
+- **One container, one page and a JSON API.** A batch runs in the browser against the
+  single-label endpoint, so the server stores nothing.
+
+[`docs/DECISIONS.md`](docs/DECISIONS.md) traces every requirement to its source in the
+brief and explains each decision.
+
 ## What it checks
 
 The brief lists seven elements a label must carry. The tool checks all seven, plus the
@@ -83,27 +102,23 @@ reads.
   row failed in error. `make eval` exits non-zero on one harmful outcome in either set,
   or under 80% accuracy on the rendered set.
 - **Every miss is a referral.** On the rendered set, three photographs of compliant
-  labels (glare, soft focus, heavy compression) go to an agent. On the AI set, OCR cannot
-  read arched and ornamental brands, and border ornaments break up the warning. One
-  photograph gave OCR only its top half. Of the five warnings the image model got wrong,
-  the repeated word fails. The other four go to an agent with every difference listed,
-  because a misprint one letter off the statute looks exactly like a misread.
-- **Before this pass,** the AI set scored 6 of 15 and rejected 4 of its 7 compliant
+  labels go to an agent. On the AI set, OCR cannot read arched and ornamental brands, and
+  border ornaments break up the warning. Of the five warnings the image model got wrong,
+  the repeated word fails. The other four go to an agent with every difference listed.
+- **On its first run,** the AI set scored 6 of 15 and rejected 4 of its 7 compliant
   labels. [`docs/DECISIONS.md`](docs/DECISIONS.md) lists what those labels found.
 
-A stress test goes further. It makes 210 degraded copies of the 14 compliant rendered
-labels, under blur, shrinking, heavy JPEG, rotation, dimming, low contrast, noise and
-glare. Before this pass, 99 of 225 copies were rejected. Now 10 are, all under glare
-that erases a line or the warning. Three more come back as unreadable, with a request
-for a better copy: two blurred past reading and one tilted photograph at half
-brightness.
+A stress test goes further (`make stress`). It makes 210 degraded copies of the 14
+compliant rendered labels, under blur, shrinking, heavy JPEG, rotation, dimming, low
+contrast, noise and glare. Its first run rejected 99 of 225 copies. Now it rejects 10,
+all under glare that erases a line or the warning. Three more come back as unreadable,
+with a request for a better copy: two blurred past reading and one tilted photograph at
+half brightness ([`eval/out/report-stress.md`](eval/out/report-stress.md)).
 
 Sarah Chen's budget is 5 seconds a label. The median is 0.9 seconds on Windows and 1.0
-in the container. With 8 workers, a Windows machine with 12 logical processors checks
-314 labels a minute, so a 300-label importer batch takes about a minute. The
-container's 4 workers on 6 cores check 209 a minute and finish that batch in 1.4
-minutes. On the live Vercel deployment a label takes 1.6 to 2.3 seconds, and the
-52-label sample batch took 67 seconds with the second reading on.
+in the container, and the live site takes 1.6 to 2.3. A 300-label importer batch takes
+about a minute with 8 workers on Windows and 1.4 minutes with the container's 4. On the
+live site, the 52-label sample batch took 67 seconds with the second reading on.
 
 **With the second reading on**, a vision model re-reads what OCR could not. Three models
 ran on the same labels through OpenRouter:
@@ -114,26 +129,21 @@ ran on the same labels through OpenRouter:
 | Gemini 3.8 Flash | 35 | 8 | 0 | 6.9 s | $0.0021 |
 | GPT-6 Luna | 35 | 7 | 0 | 7.0 s | $0.0001 |
 
-The second reading never clears the warning's wording (see How it uses AI), so the two
-rendered photographs whose warning OCR could not read stay with an agent.
+The single-label page shows the OCR result at once and updates when the second reading
+lands. On the glare sample, the referral showed after 1.1 seconds and the cleared result
+at 4.6.
 
-The single-label page shows the OCR result first and never waits for the model. In the
-browser, the glare sample showed its referral after 1.1 seconds and the cleared result at
-4.6 seconds. A repeat of the same label takes milliseconds, because both readings are
-cached. The batch page waits for each second reading, so a referred label takes a few
-seconds longer there.
-
-Every report is in [`eval/out/`](eval/out/): one per build, one per second-reading model
-and two throughput runs (Windows and the container).
+Every report is in [`eval/out/`](eval/out/): one per build and per second-reading model,
+two throughput runs, the stress test and the live triage run.
 
 ## How it uses AI
 
 - **OCR reads every label.** Tesseract, a neural-network OCR engine, runs inside the app.
   Rules turn its reading into findings.
-- **No model decides a verdict.** A rejection must survive an appeal. "The sixth word of
-  your warning reads X, 27 CFR 16.21 requires Y" can be quoted; a model's judgement
-  cannot. Marcus Williams's firewall also blocked the last vendor's model endpoints, and
-  no verdict here needs one.
+- **No model decides a verdict.** A rejection must survive an appeal, so its reason has
+  to be quotable: "The sixth word of your warning reads X, 27 CFR 16.21 requires Y."
+  Marcus Williams's firewall also blocked the last vendor's model endpoints, and no
+  verdict here needs one.
 - **A second reading** (Claude Sonnet 5 through OpenRouter) re-reads only the fields OCR
   could not read on a referred label. The rules run again on its reading, and a row
   changes only if it now passes. It can clear a referral and can never reject. It answers
@@ -154,14 +164,14 @@ and two throughput runs (Windows and the container).
 Each model feature switches on only when its credential is present. Without them, the
 app makes no outbound connection.
 
-AI also drew part of the test set. Gemini image models made the fifteen AI-generated
-labels for $1.15, so the tool is measured on artwork it was never tuned on.
-
 ## Running it
 
 The app needs Python 3.11 or newer and Tesseract.
 
 ```bash
+git clone https://github.com/sheldon904/ttb-label-verifier.git
+cd ttb-label-verifier
+
 # Tesseract
 #   macOS             brew install tesseract
 #   Debian / Ubuntu   sudo apt install tesseract-ocr
@@ -173,6 +183,7 @@ make install
 make test               # 456 tests, no network, no paid calls
 make eval               # both fixture sets, one label at a time
 make eval-throughput    # the same with 8 workers
+make stress             # 210 degraded copies of compliant labels, about 4 minutes
 make dev                # http://localhost:8000
 ```
 
@@ -193,10 +204,6 @@ docker build -t ttb-label-verifier .
 docker run --rm -p 8000:8000 ttb-label-verifier
 ```
 
-`make fixtures` renders every fixture label again and needs the fonts.
-`python fixtures/generate.py --new-only` renders only labels without an image yet, so
-the committed evaluation set never changes under you.
-
 ### Configuration
 
 | Variable | Default | Effect |
@@ -215,7 +222,8 @@ the committed evaluation set never changes under you.
 | `AI_GATEWAY_API_KEY` | none | Lets triage ask Jev. Without it, a Vercel deployment uses the token Vercel sends with each request. |
 | `TRIAGE` | `jev` | Jev when a gateway credential exists, else the local heuristic. `heuristic` or `off` choose. |
 
-The page footer states which model features are on. The evaluation calls no paid model
+To set these locally, copy `.env.example` to `.env`; the app reads it at start. The
+page footer states which model features are on. The evaluation calls no paid model
 unless asked (`--second-opinion openrouter`), so `make eval` and CI stay free.
 
 ### Deployment
@@ -237,8 +245,8 @@ Leave out any variable you do not set a value for. A blank one counts as unset.
 
 `Dockerfile.vercel` is a copy of `Dockerfile`, and a test keeps the two identical. An
 idle deployment scales to zero, so the first request after a quiet spell starts the
-container. Vercel refuses a request over 4.5 MB, so the page brings a larger photo to
-the 2,200-pixel size OCR reads before sending it.
+container. Vercel refuses a request over 4.5 MB. The page therefore shrinks a larger
+photo to the 2,200-pixel size OCR reads before sending it.
 
 **On Azure**, where the TTB already runs, the same image suits Azure Container Apps.
 [Microsoft documents](https://learn.microsoft.com/en-us/azure/container-apps/containerapp-up)
@@ -250,6 +258,8 @@ az containerapp up --name ttb-label-verifier --source . --ingress external --tar
 
 ## Tools used
 
+- Claude Code, Anthropic's coding agent, as the engineering partner (see
+  [How it was built](#how-it-was-built))
 - Python 3.12, FastAPI, Uvicorn, Pydantic and Jinja2
 - Tesseract OCR 5 through pytesseract, with Pillow and NumPy to prepare each image
 - RapidFuzz for the fuzzy matches
@@ -258,6 +268,24 @@ az containerapp up --name ttb-label-verifier --source . --ingress external --tar
 - Gemini image models through OpenRouter, which drew the fifteen AI-generated test labels
 - pytest, Ruff, GitHub Actions and Docker
 - Playwright and axe-core for the browser and accessibility checks during development
+
+## How it was built
+
+I built this with Claude Code working as my engineering partner. I turned the interviews
+into the requirements traced in `docs/DECISIONS.md`. I set the rule that a false
+rejection is the worst outcome, and I decided what shipped. Claude Code wrote and revised
+the code and ran the tests and measurements. It also drafted these documents from the
+results.
+
+Three controls kept that work honest:
+
+- **Tests and a harm gate.** CI runs 456 tests and the full evaluation on every push. The
+  evaluation fails on any harmful outcome.
+- **Measured claims.** Every number in these documents comes from a measured run. The
+  evaluation and stress-test reports are saved in [`eval/out/`](eval/out/).
+- **Separate review passes.** Other Claude Code sessions, told to break the tool, drew
+  stress labels and wrote the stress test. Many of the corrections in
+  [`docs/DECISIONS.md`](docs/DECISIONS.md) came from them.
 
 ## Assumptions
 
@@ -289,20 +317,16 @@ readings of it:
 - **The bold measurement rests on few samples:** one regular sample for each case
   pairing. Between the bands, the row says it cannot tell.
 - **Glare, soft focus and heavy compression defeat OCR.** The tool refers those labels.
-  The second reading clears the glare photograph. It may not clear a warning OCR could
-  not read, so the other two stay with an agent.
-- **Glare that erases a line leaves OCR nothing to read.** A statement under it reads
+  The second reading clears the glare photograph and leaves the other two with an agent.
+- **Glare that erases a line leaves OCR nothing to read.** The statement under it reads
   as missing or as another line, and the label fails. The stress test found this on 10
-  of 210 copies. An agent sees the glare on the artwork beside the checklist.
-- **A dim, tilted photograph can come back unread.** The page asks for a brighter copy.
-  Deskewing fills the uncovered corners white. A fill in the label's own grey read the
-  dim copy, but it turned a compliant AI-generated phone photo into a rejection.
+  of 210 copies.
+- **A dim, tilted photograph can come back unread.** The page then asks for a brighter
+  copy. A grey deskew fill read it, but the same fill made a compliant phone photo fail.
 - **A misprint one letter off the statute goes to an agent.** The rules cannot tell it
   from a misread, so the row lists the difference and the agent rejects the label.
 - **Class and type is compared as text.** The tool does not check the designation
   against the standards of identity.
-- **The commodity comes from words in the designation.** An unusual designation cites
-  all three parts.
 - **Batch progress lives in the browser.** A page refresh loses it, because the server
   stores nothing.
 - **The thresholds are tuned on rendered labels** and checked against fifteen

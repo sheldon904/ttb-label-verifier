@@ -1,6 +1,6 @@
 {
   "id": "brand_near_miss",
-  "description": "One character apart -- ambiguous, must escalate rather than guess",
+  "description": "One character apart: ambiguous, so it goes to an agent",
   "record": {
     "cola_id": "24-011",
     "brand_name": "Old Tom Distillery",

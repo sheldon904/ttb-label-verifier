@@ -193,7 +193,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="brand_near_miss",
-        description="One character apart -- ambiguous, must escalate rather than guess",
+        description="One character apart: ambiguous, so it goes to an agent",
         spec=LabelSpec(**{**OLD_TOM, "brand_name": "OLD TIM DISTILLERY"}),
         record=_record("24-011", OLD_TOM),
         expected_verdict="flag",
@@ -213,7 +213,7 @@ def build_catalog() -> list[Fixture]:
     # --- Jenny Park's cases: the warning must be exact --------------------
     f.append(Fixture(
         id="warning_title_case",
-        description="'Government Warning:' in title case -- the rejection Jenny caught",
+        description="'Government Warning:' in title case: the rejection Jenny caught",
         spec=LabelSpec(**OLD_TOM, warning_text=TITLE_CASE_WARNING),
         record=_record("24-020", OLD_TOM),
         expected_verdict="fail",
@@ -222,7 +222,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="warning_reworded",
-        description="Softened wording -- 'may wish to avoid' instead of 'should not drink'",
+        description="Softened wording: 'may wish to avoid' replaces 'should not drink'",
         spec=LabelSpec(**OLD_TOM, warning_text=REWORDED_WARNING),
         record=_record("24-021", OLD_TOM),
         expected_verdict="fail",
@@ -240,7 +240,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="warning_prefix_not_bold",
-        description="Correct text, but the prefix is set in regular weight -- advisory only",
+        description="Correct text with the prefix in regular weight: advisory only",
         spec=LabelSpec(**OLD_TOM, warning_prefix_bold=False),
         record=_record("24-023", OLD_TOM),
         expected_verdict="flag",
@@ -249,7 +249,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="warning_microtype",
-        description="Text buried at ~6pt -- too small to judge weight, must not guess",
+        description="Text at about 6 pt: too small to judge weight, so it goes to an agent",
         spec=LabelSpec(**OLD_TOM, warning_point_size=6),
         record=_record("24-024", OLD_TOM),
         expected_verdict="flag",
@@ -269,7 +269,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="proof_inconsistent",
-        description="Label contradicts itself: 45% is 90 proof, not 80",
+        description="Label contradicts itself: it states 80 proof for 45%, which is 90 proof",
         spec=LabelSpec(**{**OLD_TOM, "alcohol_statement": "45% Alc./Vol. (80 Proof)"}),
         record=_record("24-031", OLD_TOM),
         expected_verdict="fail",
@@ -278,7 +278,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="abv_no_proof",
-        description="ABV only, no proof statement -- perfectly legal",
+        description="ABV only, no proof statement: legal as printed",
         spec=LabelSpec(**{**OLD_TOM, "alcohol_statement": "45% Alc./Vol."}),
         record=_record("24-032", OLD_TOM),
         expected_verdict="pass",
@@ -354,7 +354,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="photo_skewed_and_defective",
-        description="Angled shot AND a title-case warning -- degradation must not mask a real defect",
+        description="Angled shot with a title-case warning: the photo must not hide a real defect",
         spec=LabelSpec(**OLD_TOM, warning_text=TITLE_CASE_WARNING),
         record=_record("24-054", OLD_TOM),
         expected_verdict="fail",
@@ -470,7 +470,7 @@ def build_catalog() -> list[Fixture]:
     ))
     f.append(Fixture(
         id="v3_import_agave",
-        description="Third template: imported tequila; '100% Blue Agave' is the class, not the strength",
+        description="Third template: imported tequila; '100% Blue Agave' is part of the class",
         spec=_stress(CASA_LUNA),
         record=_record("26-005", CASA_LUNA, bottler_name="Harbor Imports",
                        country_of_origin="Mexico"),

@@ -6,13 +6,13 @@ OCR engine: Tesseract 5.4.0.20240606.
 
 ## Outcome safety
 
-A single accuracy number hides the distinction that matters here: escalating a compliant label costs an agent a minute, whereas rejecting one tells an applicant they broke the law when they did not.
+Accuracy alone hides the split that matters here. Escalating a compliant label costs an agent a minute. Rejecting one tells an applicant they broke the law when they did not.
 
 | outcome | count |
 |---|---|
 | Correct | 39 |
 | Referred to a human when not strictly needed | 9 |
-| Defective, referred to a human instead of rejected | 4 |
+| Defective, referred to a human to reject | 4 |
 | **Wrong in a way that harms someone** | **0** |
 
 ### By fixture set
@@ -26,7 +26,7 @@ The rendered set is drawn by the fixture generator, so every word on it is known
 
 ## Latency and throughput
 
-These are two different numbers and conflating them is misleading. Sarah Chen's five second budget is about an agent waiting on **one** label, so it must be measured without contention. Batch is a throughput question: under load, per-label wall clock rises while labels per minute improves.
+Latency and throughput answer different questions. Sarah Chen's five-second budget is about an agent waiting on **one** label, so this run measures it without contention. Batch is a throughput question: under load, the time per label rises and the labels per minute improve.
 
 Measured at concurrency **8** (under load).
 
@@ -82,15 +82,15 @@ Triage orders referrals; it never changes a verdict. A referral of a label that 
 | `ai_scotch_import` | a read problem | 0.20 |
 | `ai_vodka_import` | a read problem | 0.20 |
 
-Genuine referrals ranked above read problems in **46%** of pairs.
+Genuine referrals ranked ahead of read problems in **46%** of pairs.
 
 ## Cost
 
-Nothing per label. There is no model, no API and no token. The only cost is local CPU time, which the latency table above already states.
+Nothing per label. There is no model, no API and no token. The only cost is local CPU time, which the latency table states.
 
 ## Rows failed in error
 
-A row that fails when the fixture was not built to fail it tells an applicant something is wrong that is not, even if the label fails for another reason. Counted as harmful above.
+A row that fails when the fixture was not built to fail it tells an applicant something is wrong that is not, even if the label fails for another reason. The harmful count includes these rows.
 
 None.
 
@@ -117,9 +117,9 @@ None.
 | fixture | expected | actual | ms | description |
 |---|---|---|---|---|
 | `abv_mismatch` | fail | fail | 1573 | Label states 40%, application says 45% |
-| `abv_no_proof` | pass | pass | 1566 | ABV only, no proof statement -- perfectly legal |
+| `abv_no_proof` | pass | pass | 1566 | ABV only, no proof statement: legal as printed |
 | `brand_case_difference` | pass | pass | 1492 | Label is all caps, application is title case. Dave: 'obviously the same thing.' |
-| `brand_near_miss` | flag | flag | 1533 | One character apart -- ambiguous, must escalate rather than guess |
+| `brand_near_miss` | flag | flag | 1533 | One character apart: ambiguous, so it goes to an agent |
 | `brand_wrong` | fail | fail | 1393 | Entirely different brand on the artwork |
 | `clean_01` | pass | pass | 1506 | Compliant label, Old Tom Distillery |
 | `clean_02` | pass | pass | 1469 | Compliant label, Stone'S Throw |
@@ -130,9 +130,9 @@ None.
 | `photo_compressed` | pass | flag ⚠ | 1485 | Heavily re-compressed JPEG, as arrives from email chains |
 | `photo_glare` | pass | flag ⚠ | 1301 | Compliant label with specular glare across the upper third |
 | `photo_skewed` | pass | pass | 1551 | Compliant label shot at an angle |
-| `photo_skewed_and_defective` | fail | fail | 1500 | Angled shot AND a title-case warning -- degradation must not mask a real defect |
+| `photo_skewed_and_defective` | fail | fail | 1500 | Angled shot with a title-case warning: the photo must not hide a real defect |
 | `photo_soft_focus` | pass | flag ⚠ | 1310 | Compliant label, slightly out of focus |
-| `proof_inconsistent` | fail | fail | 1599 | Label contradicts itself: 45% is 90 proof, not 80 |
+| `proof_inconsistent` | fail | fail | 1599 | Label contradicts itself: it states 80 proof for 45%, which is 90 proof |
 | `v2_body_caps` | pass | pass | 1578 | Second template: whole statement in capitals; 16.22 regulates only the prefix |
 | `v2_body_caps_not_bold` | flag | flag | 1548 | Second template: whole statement in capitals, prefix in regular weight |
 | `v2_import_wrong_country` | fail | fail | 1390 | Second template: Scotch declared Scottish, label says Canada |
@@ -144,15 +144,15 @@ None.
 | `v3_abv_wrong` | fail | fail | 1509 | Third template: stacked brand, label states 40% against 45% on the application |
 | `v3_dark_label` | pass | pass | 1502 | Third template: light serif type on a dark label, brand on two lines |
 | `v3_dark_title_case` | fail | fail | 1443 | Third template: dark label with a title-case warning prefix |
-| `v3_import_agave` | pass | pass | 1467 | Third template: imported tequila; '100% Blue Agave' is the class, not the strength |
+| `v3_import_agave` | pass | pass | 1467 | Third template: imported tequila; '100% Blue Agave' is part of the class |
 | `v3_large_scan` | pass | pass | 1582 | Third template: a 2700 x 3900 pixel scan |
 | `v3_one_line_statement` | pass | pass | 1453 | Third template: net contents on the same line as the alcohol statement |
 | `v3_stacked_brand` | pass | pass | 1441 | Third template: brand set on two lines in two sizes |
-| `warning_microtype` | flag | flag | 1414 | Text buried at ~6pt -- too small to judge weight, must not guess |
+| `warning_microtype` | flag | flag | 1414 | Text at about 6 pt: too small to judge weight, so it goes to an agent |
 | `warning_missing` | fail | fail | 1326 | No health warning statement at all |
-| `warning_prefix_not_bold` | flag | flag | 1444 | Correct text, but the prefix is set in regular weight -- advisory only |
-| `warning_reworded` | fail | fail | 1469 | Softened wording -- 'may wish to avoid' instead of 'should not drink' |
-| `warning_title_case` | fail | fail | 1442 | 'Government Warning:' in title case -- the rejection Jenny caught |
+| `warning_prefix_not_bold` | flag | flag | 1444 | Correct text with the prefix in regular weight: advisory only |
+| `warning_reworded` | fail | fail | 1469 | Softened wording: 'may wish to avoid' replaces 'should not drink' |
+| `warning_title_case` | fail | fail | 1442 | 'Government Warning:' in title case: the rejection Jenny caught |
 | `ai_abv_defect` | fail | fail | 1400 | AI-generated bourbon label stating 40% (80 Proof) against 45% on the application |
 | `ai_beer` | fail | flag ⚠ | 1233 | AI-generated beer label, warning on a white strip; the model printed "impairs' ability" |
 | `ai_beer_can_photo` | fail | flag ⚠ | 1181 | AI-generated phone photo of a beer can, label curving round the can; the model printed '(0)' for '(2)' |

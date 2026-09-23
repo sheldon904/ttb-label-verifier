@@ -1,0 +1,31 @@
+{
+  "id": "ai_vodka_import",
+  "description": "AI-generated import: light type on a dark label, the warning hyphenates 'ma-chinery' across lines",
+  "record": {
+    "cola_id": "27-006",
+    "brand_name": "Silver Birch",
+    "class_type": "Vodka",
+    "alcohol_content_pct": 40.0,
+    "net_contents": "1 L",
+    "bottler_name": "Northgate Imports",
+    "bottler_address": "Chicago, Illinois",
+    "country_of_origin": "Product of Poland"
+  },
+  "observations": {
+    "brand_name": "SILVER BIRCH",
+    "class_type": "Vodka",
+    "alcohol_statement": "40% Alc./Vol. (80 Proof)",
+    "net_contents": "1 L",
+    "bottler_name": "Imported by Northgate Imports",
+    "bottler_address": "Chicago, Illinois",
+    "country_of_origin": "Product of Poland",
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_small_type": false,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": [],
+  "generated_by": "google/gemini-3.1-flash-image"
+}

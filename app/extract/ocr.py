@@ -24,14 +24,25 @@ import pytesseract
 from PIL import Image
 
 from app.extract import layout
-from app.extract.imageprep import PreparedImage, binarize
+from app.extract.imageprep import SOFT_SHARPNESS, PreparedImage, binarize
 from app.extract.layout import Line, Word
+
+# One thread per Tesseract process. The container's Debian build uses OpenMP,
+# which starts a thread per core in every process, and the OCR pool already
+# runs labels side by side. In the six-core container, four labels at once
+# took 346.8 s for the 52-label sample batch; with this limit, 15.1 s. An
+# operator can still set it.
+os.environ.setdefault("OMP_THREAD_LIMIT", "1")
 
 # Below this mean word confidence we say "we could not read this", never
 # "this is wrong". The distinction is the whole safety argument for OCR here:
 # an unreadable warning must FLAG for a human, not FAIL the applicant.
 # Measured on the fixture set: legible blocks score 91-96, the 6pt block 63.
 LEGIBLE_CONF = 75.0
+
+# A word inside the warning read below this is a mark, not wording: ornament
+# words on the AI-generated labels read at 32-36%, printed words at 90% and up.
+WARNING_WORD_CONFIDENCE = 60.0
 
 # Type this small cannot be verified from an image at all, whatever Tesseract's
 # confidence claims. Same limitation that makes the 27 CFR 16.22 size rule
@@ -81,6 +92,9 @@ BRAND_DOMINANCE_FLOOR = 1.55
 # engine softens failures, but low enough that none of them can reject.
 DEGRADED_CONFIDENCE = 0.0
 
+# Below this many words read, the image is treated as degraded.
+MIN_WORDS_FOR_VERDICT = 10
+
 TESSERACT_CONFIG = "--oem 3 --psm 4"
 
 # Where the Windows installer puts the binary when it is not on PATH.
@@ -88,6 +102,25 @@ _WINDOWS_TESSERACT = (
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
 )
+
+
+def _lower(a: float | None, b: float | None) -> float | None:
+    """The lower of two confidences; None only when the first is None."""
+    if a is None:
+        return None
+    return a if b is None else min(a, b)
+
+
+def _unsure_in(block: list[Line], weak: list[Word]) -> list[str]:
+    """Words of the warning OCR could not read with confidence."""
+    if not block:
+        return []
+    words = [w for ln in block for w in ln.words]
+    left, top = min(w.left for w in words), min(w.top for w in words)
+    right, bottom = max(w.right for w in words), max(w.bottom for w in words)
+    inside = [w.text for w in weak
+              if left <= w.left and w.right <= right and top <= w.top and w.bottom <= bottom]
+    return [w.text for w in words if w.conf < WARNING_WORD_CONFIDENCE] + inside
 
 
 def resolve_tesseract(explicit: str | None) -> str | None:
@@ -242,21 +275,26 @@ class OcrExtractor:
         warning_indices = {i for i, ln in enumerate(lines) if ln in warning_block}
         warning_start = min(warning_indices) if warning_indices else None
 
-        brand, class_type, dominance = layout.pick_brand_and_class(lines, warning_indices)
-        degraded = bool(lines) and dominance < BRAND_DOMINANCE_FLOOR
+        brand, class_type, dominance = layout.pick_brand_and_class(
+            lines, warning_indices, page_height=image.height)
+        # Too few words to judge a label by: a photograph mostly of something
+        # else, or type too blurred for OCR. Every label carries the 42-word
+        # warning; the sparsest rendered fixture reads 24 words.
+        sparse = len(words) < MIN_WORDS_FOR_VERDICT
+        degraded = bool(lines) and (dominance < BRAND_DOMINANCE_FLOOR or sparse)
         if degraded:
             # The most prominent element on the label did not survive the
             # photograph. Nothing read from it is trustworthy, so the whole
             # label goes to a human rather than being rejected on bad evidence.
             brand = None
-        class_next = layout.pick_class_continuation(lines, warning_indices)
+        class_next = layout.pick_class_continuation(lines, warning_indices, page_height=image.height)
         alcohol = layout.pick_alcohol_statement(lines, warning_indices)
         net_contents = layout.pick_net_contents(lines, warning_indices)
         country = layout.pick_country(lines, warning_indices)
         bottler_name, bottler_address = layout.pick_bottler(
             lines,
             warning_indices | {i for i, ln in enumerate(lines)
-                               if ln.text.strip() in {brand, class_type}},
+                               if ln.text.strip() in {brand, class_type, alcohol, net_contents}},
             warning_start=warning_start,
         )
 
@@ -269,7 +307,9 @@ class OcrExtractor:
             glyph_px = min(ln.height for ln in warning_block)
             legible = block_conf >= LEGIBLE_CONF and glyph_px >= MIN_LEGIBLE_GLYPH_PX
             legibility = "read" if legible else "illegible"
-        elif unresolved > 0:
+        elif unresolved > 0 or degraded:
+            # On a picture this poor, a warning not found is a warning not
+            # read, not a warning shown to be missing.
             legibility = "illegible"
         else:
             legibility = "absent"
@@ -279,14 +319,38 @@ class OcrExtractor:
             notes.append(f"image was rotated {abs(prepared.deskew_deg):.1f}° to straighten it")
         if prepared.upscale_factor > 1.05:
             notes.append(f"image was enlarged {prepared.upscale_factor:.1f}x to resolve small type")
-        if legibility == "illegible":
+        if legibility == "illegible" and (warning_text or unresolved > 0):
             notes.append("small print was detected but could not be read reliably")
-        if degraded:
+        soft = prepared.sharpness < SOFT_SHARPNESS
+        if soft:
+            notes.append("the image is out of focus or was too small to read reliably; "
+                         "nothing read from it can reject the label")
+        if sparse and lines:
+            notes.append(
+                f"only {len(words)} words could be read, too few to judge a label by; "
+                "check that this is the label artwork and that it is in focus"
+            )
+        elif degraded:
             notes.append(
                 "no clearly dominant brand text was found, which usually means glare or "
                 "blowout has obscured part of the label; readings from this image are "
                 "not reliable enough to reject it"
             )
+
+        # Lines OCR saw but could not make sense of: an ornament, a smudge, or a
+        # field it misread ("1 L" came back as "TL"). While any remain, a field
+        # that was not found may be one of them, so its absence cannot reject.
+        # The class continuation is a guess the rules may reject, not a field.
+        found = [v for v in (brand, class_type, alcohol, net_contents, country,
+                             bottler_name, bottler_address) if v]
+
+        def used(text: str) -> bool:
+            # A short line counts only as a whole value: "Da" is not "Dark Rum".
+            return any(text == v or v in text or (len(text) > 3 and text in v) for v in found)
+
+        unread = [ln.text.strip() for i, ln in enumerate(lines)
+                  if i not in warning_indices and layout.looks_unread(ln)
+                  and not used(ln.text.strip())]
 
         def lines_for(value: str | None) -> list[Line]:
             if not value:
@@ -355,18 +419,28 @@ class OcrExtractor:
             "bottler_address": bottler_address,
             "country_of_origin": country,
             "warning_text": warning_text,
+            # Words in the statement read below WARNING_WORD_CONFIDENCE (border
+            # ornaments, specks) and glyphs detected inside it that OCR could not
+            # resolve (glare, compression). The rules treat them as marks, not
+            # wording, and know that part of the statement went unread.
+            "warning_unsure": _unsure_in(warning_block, weak),
             "warning_prefix_is_bold": prefix_bold,
             "warning_legibility": legibility,
             # Type this small is a size question, whoever reads the words.
             "warning_small_type": bool(warning_block) and min(
                 ln.height for ln in warning_block) < MIN_LEGIBLE_GLYPH_PX,
             "legibility_notes": notes,
+            "unread_text": unread[:5],
+            "image_soft": soft,
+            "words_read": len(words),
             "field_boxes": field_boxes,
             "field_confidence": {
                 key: (DEGRADED_CONFIDENCE if degraded else value)
                 for key, value in {
                     "brand_name": line_conf(brand),
-                    "class_type": line_conf(class_type),
+                    # The class is the line after the brand. A brand line read
+                    # unreliably makes that choice unreliable as well.
+                    "class_type": _lower(line_conf(class_type), line_conf(brand)),
                     "alcohol_content": line_conf(alcohol),
                     "proof_consistency": line_conf(alcohol),
                     "net_contents": line_conf(net_contents),

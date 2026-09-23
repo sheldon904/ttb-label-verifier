@@ -1,0 +1,31 @@
+{
+  "id": "ai_tequila_import",
+  "description": "AI-generated tequila import, '100% Blue Agave Tequila' class line, folk-art border",
+  "record": {
+    "cola_id": "27-011",
+    "brand_name": "Casa Luna",
+    "class_type": "100% Blue Agave Tequila",
+    "alcohol_content_pct": 40.0,
+    "net_contents": "750 mL",
+    "bottler_name": "Harbor Imports",
+    "bottler_address": "New York, New York",
+    "country_of_origin": "Product of Mexico"
+  },
+  "observations": {
+    "brand_name": "CASA LUNA",
+    "class_type": "100% Blue Agave Tequila",
+    "alcohol_statement": "40% Alc./Vol. (80 Proof)",
+    "net_contents": "750 mL",
+    "bottler_name": "Imported by Harbor Imports",
+    "bottler_address": "New York, New York",
+    "country_of_origin": "Product of Mexico",
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_small_type": false,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": [],
+  "generated_by": "google/gemini-3.1-flash-image"
+}

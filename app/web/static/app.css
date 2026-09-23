@@ -8,11 +8,15 @@
      - text is 17px and form fields 18px; Sarah's benchmark is her 73-year-old mother
      - the result prints as a clean checklist; Dave prints his emails */
 
+/* USWDS styles its buttons display: inline-flex, which beats the hidden
+   attribute; the print button showed before there was anything to print. */
+[hidden] { display: none !important; }
+
 :root {
   --green: #00a91c;        /* green-cool-40v, USWDS success */
   --green-dark: #008817;
   --gold: #ffbe2e;         /* gold-20v, USWDS warning */
-  --gold-dark: #936f38;
+  --gold-dark: #775540;    /* accent-warm-darker: 6.4:1 on the review row tint */
   --red: #d54309;          /* red-warm-50v, USWDS error */
   --red-dark: #b50909;
   --blue: #005ea2;         /* blue-60v, USWDS primary */
@@ -124,6 +128,7 @@ html { font-size: 106.25%; }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
 .print-hint { margin: 1rem 0 0; }
+.print-only { display: none; }
 
 /* --- batch -------------------------------------------------------------------- */
 
@@ -163,6 +168,9 @@ html { font-size: 106.25%; }
   .artwork { break-inside: avoid; background: none; }
   .artwork img { max-height: 3.2in; }
   .check { break-inside: avoid; }
-  .check__status { border: 1px solid #000; }
+  /* Backgrounds do not print, and a tag's white text on no background did
+     not either. */
+  .usa-tag { background: none !important; color: #1b1b1b !important; border: 1px solid #1b1b1b; }
+  .print-only { display: block; margin: 0 0 .75rem; }
   h1::after { content: " (prototype, assists review only)"; font-weight: 400; font-size: .6em; }
 }

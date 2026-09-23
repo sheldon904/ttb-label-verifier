@@ -15,6 +15,8 @@ from app.config import REPO_ROOT
 from app.extract.imageprep import PreparedImage
 
 FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
+# The AI-generated set: JPEG artwork with the same truth files.
+AI_FIXTURE_DIR = REPO_ROOT / "fixtures" / "ai"
 
 
 class StubExtractionMissing(KeyError):
@@ -26,13 +28,14 @@ class StubExtractor:
 
     def __init__(self, fixture_dir: Path | None = None) -> None:
         self._index: dict[str, dict] = {}
-        directory = fixture_dir or FIXTURE_DIR
-        for truth_path in sorted(directory.glob("*.truth.json")):
-            image_path = truth_path.with_name(truth_path.name.replace(".truth.json", ".png"))
-            if not image_path.is_file():
-                continue
-            digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
-            self._index[digest] = json.loads(truth_path.read_text(encoding="utf-8"))["observations"]
+        directories = (fixture_dir,) if fixture_dir else (FIXTURE_DIR, AI_FIXTURE_DIR)
+        for truth_path in (p for d in directories for p in sorted(d.glob("*.truth.json"))):
+            stem = truth_path.name.replace(".truth.json", "")
+            for image_path in (truth_path.with_name(stem + ext) for ext in (".png", ".jpg")):
+                if image_path.is_file():
+                    digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
+                    truth = json.loads(truth_path.read_text(encoding="utf-8"))
+                    self._index[digest] = truth["observations"]
 
     def __len__(self) -> int:
         return len(self._index)

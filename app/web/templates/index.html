@@ -22,7 +22,7 @@
     <div class="usa-alert__body">
       <p class="usa-alert__text">
         <strong>Prototype.</strong> Not an official government website and not connected to
-        COLA. Uploaded images and application data are processed in memory and not stored.
+        COLA. Uploaded images and application details are discarded when each check finishes.
       </p>
     </div>
   </div>
@@ -131,8 +131,9 @@
       </div>
 
       <div class="desktop:grid-col-7">
-      <section class="panel" aria-labelledby="result-heading" aria-live="polite">
+      <section class="panel" aria-labelledby="result-heading">
         <h2 id="result-heading" class="margin-top-0">Result</h2>
+        <p id="result-status" class="usa-sr-only" role="status" aria-live="polite"></p>
         <figure id="artwork" class="artwork" hidden>
           <div class="artwork__frame">
             <img id="artwork-img" alt="The label artwork being checked">
@@ -169,7 +170,7 @@
           <div class="tablet:grid-col-6 usa-form-group margin-top-0">
             <label class="usa-label margin-top-0" for="batch-records">Application records</label>
             <span class="usa-hint" id="batch-records-hint">CSV or JSON. Needs at least a COLA ID and
-              a brand name per row; column names are matched flexibly.</span>
+              a brand name per row; column names are matched flexibly. From Excel, save as CSV.</span>
             <input class="usa-file-input" id="batch-records" type="file" aria-describedby="batch-records-hint"
                    accept=".csv,.json,text/csv,application/json">
           </div>
@@ -209,7 +210,7 @@
         This tool assists review; it does not make determinations.
         <a class="usa-link" href="/docs">API documentation</a>.</p>
       <p class="assist-status margin-y-1">
-        Second opinion on referrals: <strong>{{ second_opinion or "off" }}</strong>.
+        Second reading of referrals: <strong>{{ second_opinion or "off" }}</strong>.
         Referral triage: <strong>{{ triage or "off" }}</strong>.
         {% if not second_opinion and triage == "heuristic" %}No outbound connection is made.{% endif %}
       </p>

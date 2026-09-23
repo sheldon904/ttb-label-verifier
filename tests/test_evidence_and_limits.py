@@ -226,7 +226,7 @@ def test_a_referral_is_triaged(client):
 
 def test_index_says_what_is_switched_on(client):
     html = client.get("/").text
-    assert "Second opinion on referrals: <strong>off</strong>" in html
+    assert "Second reading of referrals: <strong>off</strong>" in html
     assert "No outbound connection is made." in html
 
 
@@ -305,10 +305,10 @@ def test_an_unknown_option_is_explained(client):
 def test_an_oversized_upload_is_refused_with_its_size(client):
     from app import main
     before = main.settings.max_upload_bytes
-    main.settings = replace(main.settings, max_upload_bytes=1_000_000)
+    main.settings = replace(main.settings, max_upload_bytes=1024 * 1024)
     try:
         r = client.post("/api/review", data={"cola_id": "X", "brand_name": "Y"},
-                        files={"image": ("big.png", b"\0" * 1_500_000, "image/png")})
+                        files={"image": ("big.png", b"\0" * (1024 * 1024 * 3 // 2), "image/png")})
     finally:
         main.settings = replace(main.settings, max_upload_bytes=before)
     assert r.status_code == 413

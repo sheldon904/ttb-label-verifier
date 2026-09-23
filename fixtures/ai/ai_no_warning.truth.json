@@ -1,0 +1,32 @@
+{
+  "id": "ai_no_warning",
+  "description": "AI-generated rye label with no government warning at all",
+  "record": {
+    "cola_id": "27-014",
+    "brand_name": "North Fork",
+    "class_type": "Straight Rye Whiskey",
+    "alcohol_content_pct": 50.0,
+    "net_contents": "750 mL",
+    "bottler_name": "North Fork Distillers",
+    "bottler_address": "Louisville, Kentucky"
+  },
+  "observations": {
+    "brand_name": "NORTH FORK",
+    "class_type": "Straight Rye Whiskey",
+    "alcohol_statement": "50% Alc./Vol. (100 Proof)",
+    "net_contents": "750 mL",
+    "bottler_name": "Distilled and Bottled by North Fork Distillers",
+    "bottler_address": "Louisville, Kentucky",
+    "country_of_origin": null,
+    "warning_text": null,
+    "warning_prefix_is_bold": null,
+    "warning_legibility": "absent",
+    "warning_small_type": false,
+    "legibility_notes": []
+  },
+  "expected_verdict": "fail",
+  "expected_failing_fields": [
+    "government_warning"
+  ],
+  "generated_by": "google/gemini-3.1-flash-image"
+}

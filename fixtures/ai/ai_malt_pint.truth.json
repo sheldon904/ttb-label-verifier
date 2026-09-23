@@ -1,0 +1,30 @@
+{
+  "id": "ai_malt_pint",
+  "description": "AI-generated ale label, ornamental brand lettering, net contents '1 PINT 6 FL OZ'",
+  "record": {
+    "cola_id": "27-010",
+    "brand_name": "Copper Kettle",
+    "class_type": "Amber Ale",
+    "alcohol_content_pct": 5.2,
+    "net_contents": "1 pint 6 fl oz",
+    "bottler_name": "Copper Kettle Brewing Co.",
+    "bottler_address": "Bend, Oregon"
+  },
+  "observations": {
+    "brand_name": "COPPER KETTLE",
+    "class_type": "Amber Ale",
+    "alcohol_statement": "5.2% ALC/VOL",
+    "net_contents": "1 PINT 6 FL OZ",
+    "bottler_name": "Brewed and Bottled by Copper Kettle Brewing Co.",
+    "bottler_address": "Bend, Oregon",
+    "country_of_origin": null,
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_small_type": false,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": [],
+  "generated_by": "google/gemini-3.1-flash-image"
+}

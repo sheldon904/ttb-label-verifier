@@ -37,8 +37,9 @@ class Settings:
     max_batch_concurrency: int
     max_upload_bytes: int
     tesseract_cmd: str | None
-    # Abuse limits for a public deployment.
-    rate_limit_per_minute: int = 120
+    # Abuse limits for a public deployment. 600 a minute is above what the OCR
+    # pool can do (about 270), so one agent's batch never waits on it.
+    rate_limit_per_minute: int = 600
     trust_proxy_headers: bool = False
     max_batch_labels: int = 500
     # A vision model re-reads only the fields OCR could not read on a referred
@@ -74,7 +75,7 @@ def load_settings() -> Settings:
         max_batch_concurrency=int(os.environ.get("MAX_BATCH_CONCURRENCY", "8")),
         max_upload_bytes=int(os.environ.get("MAX_UPLOAD_BYTES", str(12 * 1024 * 1024))),
         tesseract_cmd=os.environ.get("TESSERACT_CMD") or None,
-        rate_limit_per_minute=int(os.environ.get("RATE_LIMIT_PER_MINUTE", "120")),
+        rate_limit_per_minute=int(os.environ.get("RATE_LIMIT_PER_MINUTE", "600")),
         trust_proxy_headers=_flag("TRUST_PROXY_HEADERS"),
         max_batch_labels=int(os.environ.get("MAX_BATCH_LABELS", "500")),
         second_opinion=os.environ.get("SECOND_OPINION", "auto").strip().lower(),

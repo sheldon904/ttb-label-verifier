@@ -20,12 +20,19 @@ from app.extract.stub import StubExtractor
 from app.models import ApplicationRecord
 from app.pipeline import review_label
 
-FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
+FIXTURE_DIRS = (REPO_ROOT / "fixtures" / "labels", REPO_ROOT / "fixtures" / "ai")
 
 
 def _fixtures() -> list[tuple[str, Path]]:
     return [(p.name.replace(".truth.json", ""), p)
-            for p in sorted(FIXTURE_DIR.glob("*.truth.json"))]
+            for folder in FIXTURE_DIRS for p in sorted(folder.glob("*.truth.json"))]
+
+
+def _image(truth_path: Path) -> Path:
+    """PNG for the rendered set, JPEG for the AI-generated one."""
+    stem = truth_path.name.replace(".truth.json", "")
+    return next(truth_path.with_name(stem + ext) for ext in (".png", ".jpg")
+                if truth_path.with_name(stem + ext).is_file())
 
 
 def test_fixture_set_is_present_and_balanced():
@@ -38,13 +45,16 @@ def test_fixture_set_is_present_and_balanced():
 @pytest.mark.parametrize("fixture_id,truth_path", _fixtures(), ids=lambda v: v if isinstance(v, str) else "")
 def test_rule_engine_reproduces_expected_verdict(fixture_id, truth_path):
     truth = json.loads(truth_path.read_text(encoding="utf-8"))
-    image = truth_path.with_name(truth_path.name.replace(".truth.json", ".png"))
+    image = _image(truth_path)
     bundle = asyncio.run(review_label(
         image.read_bytes(),
         ApplicationRecord(**truth["record"]),
         StubExtractor(),
     ))
-    assert bundle.result.verdict.value == truth["expected_verdict"], (
+    # A few AI-generated labels are misprinted in a way no reading can tell
+    # from a misread; the rules refer them by design (see rules_verdict_why).
+    expected = truth.get("rules_verdict", truth["expected_verdict"])
+    assert bundle.result.verdict.value == expected, (
         f"{fixture_id}: {truth['description']}\n"
         + "\n".join(f"  {c.field}: {c.verdict.value} — {c.reason}" for c in bundle.result.checks)
     )
@@ -57,7 +67,7 @@ def test_expected_failing_fields_are_the_ones_that_fire(fixture_id, truth_path):
     expected = set(truth["expected_failing_fields"])
     if not expected:
         return
-    image = truth_path.with_name(truth_path.name.replace(".truth.json", ".png"))
+    image = _image(truth_path)
     bundle = asyncio.run(review_label(
         image.read_bytes(),
         ApplicationRecord(**truth["record"]),

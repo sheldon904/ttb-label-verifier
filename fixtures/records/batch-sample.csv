@@ -36,3 +36,18 @@ cola_id,brand_name,class_type,abv,net_contents,bottler_name,bottler_address,coun
 26-003,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_large_scan.png
 26-004,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_one_line_statement.png
 26-001,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",Product of the United States,v3_stacked_brand.png
+27-013,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",,ai_abv_defect.jpg
+27-003,Harbor Light,India Pale Ale,6.5,12 fl oz,Harbor Light Brewing Co.,"Portland, Maine",,ai_beer.jpg
+27-009,Tidewater,Pilsner,4.8,12 fl oz,Tidewater Brewing Co.,"Norfolk, Virginia",,ai_beer_can_photo.jpg
+27-001,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",,ai_bourbon.jpg
+27-007,Hollow Oak,London Dry Gin,47.0,750 mL,Hollow Oak Distilling,"Asheville, North Carolina",,ai_gin_arched.jpg
+27-010,Copper Kettle,Amber Ale,5.2,1 pint 6 fl oz,Copper Kettle Brewing Co.,"Bend, Oregon",,ai_malt_pint.jpg
+27-014,North Fork,Straight Rye Whiskey,50.0,750 mL,North Fork Distillers,"Louisville, Kentucky",,ai_no_warning.jpg
+27-004,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",,ai_photo_bar.jpg
+27-015,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",,ai_photo_compliant.jpg
+27-008,Captain's Harbor,Aged Caribbean Rum,40.0,750 mL,Seaside Spirits Co.,"Miami, Florida",Product of Jamaica,ai_rum_photo_glare.jpg
+27-012,Glen Arden,Single Malt Scotch Whisky,43.0,750 mL,Highland Trading Co.,"Boston, Massachusetts",Product of Scotland,ai_scotch_import.jpg
+27-011,Casa Luna,100% Blue Agave Tequila,40.0,750 mL,Harbor Imports,"New York, New York",Product of Mexico,ai_tequila_import.jpg
+27-005,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,45.0,750 mL,Old Tom Distilling Co.,"Bardstown, Kentucky",,ai_title_case.jpg
+27-006,Silver Birch,Vodka,40.0,1 L,Northgate Imports,"Chicago, Illinois",Product of Poland,ai_vodka_import.jpg
+27-002,Stone's Throw,Cabernet Sauvignon,13.5,750 mL,Stone's Throw Winery,"Napa, California",,ai_wine.jpg

@@ -21,12 +21,15 @@ rules decide, and every finding cites the regulation behind it.
 3. Pick the photograph with glare. OCR cannot read part of it, so the label is referred
    at once. A second reading clears it a few seconds later, and each cleared row says
    where its reading came from.
-4. Select **Many labels**, then **Run the sample batch**. Thirty-seven labels run with a
-   progress bar, a summary and a CSV export. Referrals sort by how likely each is to be
-   a real defect.
-5. Upload your own artwork under **One label**. Only the COLA ID and the brand name are
-   required.
-6. Read the API documentation at `/docs`.
+4. Pick the two labels made with an AI image generator, as the brief suggests. The wine
+   passes. The bourbon fails: the image model printed "alcoholic alcoholic" in its
+   warning, and the checklist shows that word.
+5. Select **Many labels**, then **Run the sample batch**. Fifty-two labels, fifteen of
+   them AI-generated, run with a progress bar, a summary and a CSV export. Referrals
+   sort by how likely each is to be a real defect.
+6. Upload your own artwork under **One label**: JPEG, PNG, WEBP or TIFF. Only the COLA ID
+   and the brand name are required.
+7. Read the API documentation at `/docs`.
 
 ## What it checks
 
@@ -35,19 +38,21 @@ two things the worked example adds: the proof statement and the warning's typogr
 
 | Element | How the label is compared | Citation for spirits |
 |---|---|---|
-| Brand name | Case, punctuation and accents ignored, then a fuzzy match. A near miss goes to an agent. | 27 CFR 5.64 |
-| Class / type | The same normalisation with stricter bands. One designation inside the other goes to an agent. | 5.63(a)(2), subpart I |
-| Alcohol content | The percentage exactly. The proof must equal twice the percentage. The wording form is advisory. | 5.65 |
-| Net contents | Units converted first: `750 mL` = `75 cl` = `0.75 L`, `12 FL OZ` = `355 mL`, `1 PINT 6 FL OZ` | 5.70 |
-| Bottler name and address | Token match. A wrong name fails; a different address goes to an agent. | 5.66 to 5.68 |
-| Country of origin | Imports only. The country is compared and the wording around it is ignored. | 5.69, 19 CFR 134.11 |
-| Government warning | Exact wording against the statute, with a word-by-word difference | 16.21 |
+| Brand name | The same words once case, punctuation, spacing and accents are set aside. One letter different, or part of the brand, goes to an agent. | 27 CFR 5.64 |
+| Class / type | The same words. A similar designation, or one inside the other, goes to an agent. | 5.63(a)(2), subpart I |
+| Alcohol content | The percentage exactly. The proof must equal twice the percentage. A reading ten times the application's, or one the label's own proof contradicts, is a misread and goes to an agent. The wording form is advisory. | 5.65 |
+| Net contents | Units converted first: `750 mL` = `0.75 L`, `12 FL OZ` = `355 mL`, `1 PINT 6 FL OZ`, `1/2 GALLON`. The statement must use the units the part requires. A size no spirit or wine bottle comes in is a misread. | 5.70, 5.203 |
+| Bottler name and address | Read from the "Bottled by" or "Imported by" statement. The name's own words are compared, so "Distilling Co." alone matches nothing. A wrong name fails; a different address goes to an agent. | 5.66 to 5.68 |
+| Country of origin | Imports only. The same country passes, a similar spelling goes to an agent and a different country fails. | 5.69, 19 CFR 134.11 |
+| Government warning | Word by word against the statute. An added or changed word, "not" dropped or a phrase cut out fails. A difference a misread produces goes to an agent with the words listed. | 16.21 |
 | Warning heading | `GOVERNMENT WARNING` in capital letters (fails otherwise) and bold (measured, advisory). The type-size minimum for this container is stated. | 16.22(a)(2), 16.22(b) |
 
 The citations follow the commodity. The class/type designation decides it: a beer cites
 part 7, a wine part 4 and a spirit part 5. A designation that names no commodity cites
 all three parts. A beer or a table wine without an alcohol statement goes to an agent,
-because parts 7 and 4 make the statement optional there.
+because parts 7 and 4 make the statement optional there. Spirits and wine state net
+contents in liters or milliliters and malt beverages in U.S. units, so "75 cl" alone on
+a whisky goes to an agent with 5.70(a) quoted.
 
 Each row gets one of three results: **Pass**, **Review** or **Fail**. A label fails when
 a row fails and needs review when a row needs a person. The checklist answers two
@@ -56,46 +61,69 @@ regulation on its own terms.
 
 ## Measured results
 
-The evaluation runs 37 rendered labels in three artwork styles through the full pipeline,
-one label at a time. The same labels run on three Tesseract builds, because the builds
-disagree on individual reads.
+The evaluation runs every label through the full pipeline, one at a time, in two sets:
 
-| Tesseract build | Correct | Compliant, referred | Defective, referred | **Harmful** | p95 |
-|---|---|---|---|---|---|
-| 5.4.0, Windows | 34 | 3 | 0 | **0** | 1.26 s |
-| 5.5.0, Debian (the container) | 33 | 3 | 1 | **0** | 1.40 s |
-| 5.3.4, Ubuntu 24.04 (CI) | 33 | 3 | 1 | **0** | 1.42 s |
+- **37 rendered labels** in three artwork styles, drawn by `fixtures/generate.py`. Every
+  word on them is known, and every threshold was tuned on them.
+- **15 AI-generated labels**, drawn by Gemini image models as the brief suggests. Eleven
+  are flat labels, some with arched or ornamental lettering or light type on a dark card.
+  Four are phone photographs. Their truth was read off each image by eye. The image model
+  got five warnings wrong, so those labels are defective as printed.
+
+The same labels run on three Tesseract builds, because the builds disagree on individual
+reads.
+
+| Tesseract build | Rendered, correct of 37 | AI-generated, correct of 15 | **Harmful** | p95 |
+|---|---|---|---|---|
+| 5.4.0, Windows | 34 | 5 | **0** | 1.02 s |
+| 5.5.0, Debian (the container) | 34 | 5 | **0** | 1.21 s |
+| 5.3.4, Ubuntu 24.04 (CI) | 34 | 5 | **0** | 1.35 s |
 
 - **Harmful** counts a compliant label rejected, a defective label passed and any single
-  row failed in error. `make eval` exits non-zero on one harmful outcome, or under 80%
-  accuracy.
-- **Compliant, referred** is three photographs of compliant labels (glare, soft focus and
-  heavy compression) sent to an agent. Each costs an agent a minute.
-- **Defective, referred** is one label on two builds. Its "16 FL OZ" reads at near-zero
-  confidence, and a field read that badly cannot reject. The agent still sees the defect.
+  row failed in error. `make eval` exits non-zero on one harmful outcome in either set,
+  or under 80% accuracy on the rendered set.
+- **Every miss is a referral.** On the rendered set, three photographs of compliant
+  labels (glare, soft focus, heavy compression) go to an agent. On the AI set, OCR cannot
+  read arched and ornamental brands, and border ornaments break up the warning. One
+  photograph gave OCR only its top half. Of the five warnings the image model got wrong,
+  the repeated word fails. The other four go to an agent with every difference listed,
+  because a misprint one letter off the statute looks exactly like a misread.
+- **Before this pass,** the AI set scored 6 of 15 and rejected 4 of its 7 compliant
+  labels. [`docs/DECISIONS.md`](docs/DECISIONS.md) lists what those labels found.
 
-Sarah Chen's budget is 5 seconds a label. The median is 1.1 seconds. With 8 workers, a
-Windows machine with 12 logical processors checks 271 labels a minute. A 300-label
-importer batch therefore takes just over a minute.
+A stress test goes further. It makes 210 degraded copies of the 14 compliant rendered
+labels, under blur, shrinking, heavy JPEG, rotation, dimming, low contrast, noise and
+glare. Before this pass, 99 of 225 copies were rejected. Now 10 are, all under glare
+that erases a line or the warning. Three more come back as unreadable, with a request
+for a better copy: two blurred past reading and one tilted photograph at half
+brightness.
 
-**With the second reading on**, Claude Sonnet 5 re-read the 4 referred labels and the
-result was 37 of 37 with no harmful outcome. Three models ran on the same labels through
-OpenRouter:
+Sarah Chen's budget is 5 seconds a label. The median is 0.9 seconds on Windows and 1.0
+in the container. With 8 workers, a Windows machine with 12 logical processors checks
+314 labels a minute, so a 300-label importer batch takes about a minute. The
+container's 4 workers on 6 cores check 209 a minute and finish that batch in 1.4
+minutes.
 
-| Second-reading model | Correct of 37 | Harmful | Slowest re-read label | Cost per re-read label |
-|---|---|---|---|---|
-| **Claude Sonnet 5** (default) | **37** | **0** | **4.8 s** | $0.0052 |
-| Gemini 3.8 Flash | 37 | 0 | 7.0 s | $0.0022 |
-| GPT-6 Luna | 36 | 0 | 7.5 s | $0.0002 |
+**With the second reading on**, a vision model re-reads what OCR could not. Three models
+ran on the same labels through OpenRouter:
+
+| Second-reading model | Rendered, of 37 | AI-generated, of 15 | Harmful | Slowest consulted label | Cost per consulted label |
+|---|---|---|---|---|---|
+| **Claude Sonnet 5** (default) | **35** | **7** | **0** | **4.9 s** | $0.0057 |
+| Gemini 3.8 Flash | 35 | 8 | 0 | 6.9 s | $0.0021 |
+| GPT-6 Luna | 35 | 7 | 0 | 7.0 s | $0.0001 |
+
+The second reading never clears the warning's wording (see How it uses AI), so the two
+rendered photographs whose warning OCR could not read stay with an agent.
 
 The single-label page shows the OCR result first and never waits for the model. In the
-browser, the glare sample showed its referral after 1.4 seconds and the cleared result at
-4.7 seconds. A repeat of the same label takes milliseconds, because both readings are
+browser, the glare sample showed its referral after 1.1 seconds and the cleared result at
+4.6 seconds. A repeat of the same label takes milliseconds, because both readings are
 cached. The batch page waits for each second reading, so a referred label takes a few
 seconds longer there.
 
-Every report is in [`eval/out/`](eval/out/): one per build, the throughput run and one
-per second-reading model.
+Every report is in [`eval/out/`](eval/out/): one per build, one per second-reading model
+and two throughput runs (Windows and the container).
 
 ## How it uses AI
 
@@ -111,6 +139,11 @@ per second-reading model.
   through a typed tool call. OpenRouter sends it only to providers that do not store or
   train on requests. A cache, a daily limit and a credit limit on the credential cap the
   cost.
+- **The second reading never touches the warning's wording.** A vision model knows the
+  statute by heart and tends to return it whole. A reading that "clears" a warning looks
+  the same as one that corrected an altered statement back to the statute. That altered
+  statement is the defect Jenny Park described, so the wording stays with OCR and the
+  agent.
 - **Referral triage** (Jev through Vercel AI Gateway) estimates which referrals in a batch
   are real defects, so the queue starts with them. Jev receives only the tool's own
   findings: field names, verdicts and scores. Label text never reaches it, because the
@@ -119,6 +152,9 @@ per second-reading model.
 
 Each model feature switches on only when its credential is present. Without them, the
 app makes no outbound connection.
+
+AI also drew part of the test set. Gemini image models made the fifteen AI-generated
+labels for $1.15, so the tool is measured on artwork it was never tuned on.
 
 ## Running it
 
@@ -133,8 +169,8 @@ The app needs Python 3.11 or newer and Tesseract.
 
 # macOS, Linux and WSL
 make install
-make test               # 362 tests, no network, no paid calls
-make eval               # every fixture label, one at a time
+make test               # 452 tests, no network, no paid calls
+make eval               # both fixture sets, one label at a time
 make eval-throughput    # the same with 8 workers
 make dev                # http://localhost:8000
 ```
@@ -165,9 +201,10 @@ the committed evaluation set never changes under you.
 | Variable | Default | Effect |
 |---|---|---|
 | `MAX_BATCH_CONCURRENCY` | 8 (4 in the container) | Labels in the OCR pool at once. The batch page reads it. |
+| `OMP_THREAD_LIMIT` | 1 | Threads per Tesseract process. The pool already runs labels in parallel, and a thread per core made the container's batch 23 times slower. |
 | `MAX_UPLOAD_BYTES` | 12 MiB | Largest image or records file accepted |
 | `MAX_BATCH_LABELS` | 500 | Largest batch accepted |
-| `RATE_LIMIT_PER_MINUTE` | 120 | Review requests per address per minute. The batch page waits out a 429. |
+| `RATE_LIMIT_PER_MINUTE` | 600 | Review requests per address per minute, more than the OCR pool can check. The batch page waits out a 429. |
 | `TRUST_PROXY_HEADERS` | off | Behind a load balancer, take the address from `X-Forwarded-For` |
 | `OPENROUTER_API_KEY` | none | Turns on the second reading. Set a credit limit on this credential. |
 | `ANTHROPIC_API_KEY` | none | Turns on the second reading through Anthropic when there is no OpenRouter credential |
@@ -213,7 +250,9 @@ az containerapp up --name ttb-label-verifier --source . --ingress external --tar
 - RapidFuzz for the fuzzy matches
 - The U.S. Web Design System 3.14 for the page, served from the app with no CDN
 - httpx for the two model calls: OpenRouter (Claude Sonnet 5) and Vercel AI Gateway (Jev)
+- Gemini image models through OpenRouter, which drew the fifteen AI-generated test labels
 - pytest, Ruff, GitHub Actions and Docker
+- Playwright and axe-core for the browser and accessibility checks during development
 
 ## Assumptions
 
@@ -227,7 +266,8 @@ readings of it:
    commodity field, so the tool infers it from words such as "Whiskey", "Cabernet" or
    "Ale".
 3. **No COLA integration,** per Marcus. The tool is a standalone proof of concept.
-4. **Nothing is stored.** Images and records are processed in memory and discarded.
+4. **Nothing is kept.** Uploads are discarded when each check finishes. The OCR cache
+   keeps readings, never images, in memory.
 5. **The label and the application must state the same alcohol content.** The 0.3-point
    tolerance in 27 CFR 5.65(c) is between the label and the liquid, which is a
    laboratory question.
@@ -243,15 +283,24 @@ readings of it:
 - **The bold measurement rests on few samples:** one regular sample for each case
   pairing. Between the bands, the row says it cannot tell.
 - **Glare, soft focus and heavy compression defeat OCR.** The tool refers those labels.
-  The second reading cleared all three in the evaluation.
+  The second reading clears the glare photograph. It may not clear a warning OCR could
+  not read, so the other two stay with an agent.
+- **Glare that erases a line leaves OCR nothing to read.** A statement under it reads
+  as missing or as another line, and the label fails. The stress test found this on 10
+  of 210 copies. An agent sees the glare on the artwork beside the checklist.
+- **A dim, tilted photograph can come back unread.** The page asks for a brighter copy.
+  Deskewing fills the uncovered corners white. A fill in the label's own grey read the
+  dim copy, but it turned a compliant AI-generated phone photo into a rejection.
+- **A misprint one letter off the statute goes to an agent.** The rules cannot tell it
+  from a misread, so the row lists the difference and the agent rejects the label.
 - **Class and type is compared as text.** The tool does not check the designation
   against the standards of identity.
 - **The commodity comes from words in the designation.** An unusual designation cites
   all three parts.
 - **Batch progress lives in the browser.** A page refresh loses it, because the server
   stores nothing.
-- **The thresholds are tuned on rendered labels.** Real COLA artwork will move some of
-  them.
+- **The thresholds are tuned on rendered labels** and checked against fifteen
+  AI-generated ones. Real COLA artwork will move some of them.
 
 ## More detail
 

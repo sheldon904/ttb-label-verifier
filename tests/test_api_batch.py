@@ -55,10 +55,14 @@ def test_sample_batch_is_served_for_reviewers(client):
     assert r.status_code == 200
     d = r.json()
     assert len(d["records"]) >= 10
-    assert all(v.endswith(".png") for v in d["images"].values())
-    # Every referenced image is one the image endpoint can serve.
+    # Rendered labels are PNG, the AI-generated ones JPEG.
+    assert all(v.endswith((".png", ".jpg")) for v in d["images"].values())
+    assert any(v.endswith(".jpg") for v in d["images"].values())
+    # Every referenced image is one the image endpoint can serve, as its type.
     for filename in d["images"].values():
-        assert client.get(f"/examples/{filename[:-4]}/image").status_code == 200
+        r = client.get(f"/examples/{filename[:-4]}/image")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == ("image/jpeg" if filename.endswith(".jpg") else "image/png")
 
 
 def test_percent_sign_in_the_form_is_tolerated(client):

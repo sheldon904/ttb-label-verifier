@@ -21,7 +21,9 @@ from app.rules.citations import citation as cite
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
 _LEADING_ARTICLE = re.compile(r"^(the)\s+", re.IGNORECASE)
 
-BRAND_PASS_THRESHOLD = 95.0   # >= this: same brand, cosmetic difference only
+# A brand passes only on the same words (see same_words). Two lines are read
+# as one stacked brand when together they reach this similarity.
+BRAND_PASS_THRESHOLD = 95.0
 BRAND_FLAG_THRESHOLD = 80.0   # >= this: plausibly the same, needs a human
 
 
@@ -43,10 +45,27 @@ def _tokens(text: str) -> list[str]:
     return normalize_brand(text).split()
 
 
+def same_words(a: str, b: str) -> bool:
+    """Equal once case, accents, punctuation and spacing are set aside.
+
+    "STONE'S THROW" is "Stone's Throw" and "STONES THROW". A letter is never
+    set aside: "BUFFALO GRACE" is not "Buffalo Trace", however similar.
+    """
+    return normalize_brand(a).replace(" ", "") == normalize_brand(b).replace(" ", "")
+
+
 def is_part_of(part: str, whole: str) -> bool:
     """Every word of `part` appears in `whole`, and `whole` has more words."""
     p, w = _tokens(part), _tokens(whole)
     return bool(p) and len(p) < len(w) and all(t in w for t in p)
+
+
+def is_fragment_of(part: str, whole: str) -> bool:
+    """`part` reads as a piece of `whole`: "STILLERY" of "Old Tom Distillery",
+    "entucky Straight" of "Kentucky Straight Bourbon Whiskey". What a photograph
+    that cuts off or curves away part of a line gives OCR."""
+    p, w = normalize_brand(part), normalize_brand(whole)
+    return 4 <= len(p) < len(w) and fuzz.partial_ratio(p, w) >= 90
 
 
 def check_brand_name(expected: str, observed: str | None) -> CheckResult:
@@ -59,15 +78,17 @@ def check_brand_name(expected: str, observed: str | None) -> CheckResult:
 
     score = fuzz.ratio(normalize_brand(expected), normalize_brand(observed))
 
-    if score >= BRAND_PASS_THRESHOLD:
+    if same_words(expected, observed):
         reason = "Exact match." if expected == observed else (
-            f"Matches after normalization (case/punctuation differ, similarity {score:.0f}%)."
+            "Matches; only case, punctuation or spacing differ."
         )
         verdict = Verdict.PASS
     elif score >= BRAND_FLAG_THRESHOLD:
+        # One letter apart is a different mark ("Buffalo Grace") or a misread;
+        # either way a person decides.
         verdict = Verdict.FLAG
-        reason = f"Similar but not equivalent (similarity {score:.0f}%); agent review required."
-    elif is_part_of(observed, expected):
+        reason = f"Similar but not the same (similarity {score:.0f}%); agent review required."
+    elif is_part_of(observed, expected) or is_fragment_of(observed, expected):
         # "OLD TOM" read from a label whose brand is "Old Tom Distillery": part
         # of the brand was read and the rest was not, or sits on a line that
         # was taken for something else. That is a partial read, not a
@@ -78,6 +99,17 @@ def check_brand_name(expected: str, observed: str | None) -> CheckResult:
                     "The rest may be set on another line or may not have been read; "
                     "confirm on the artwork."),
             citation=citation, read_uncertain=True,
+        )
+    elif is_part_of(expected, observed):
+        # The application's brand and more: a fanciful name set in the same
+        # type as the brand, read together with it. The agent decides whether
+        # the extra words belong to the brand.
+        return CheckResult(
+            field="brand_name", verdict=Verdict.FLAG, expected=expected, observed=observed,
+            reason=(f"The label reads {observed!r}, which contains the application's brand "
+                    "and more. Confirm on the artwork whether the extra words are part of "
+                    "the brand name."),
+            citation=citation,
         )
     else:
         verdict = Verdict.FAIL
@@ -219,11 +251,16 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None,
         and abs(proof - 2 * expected_pct) < 0.1 and abs(abv - expected_pct) > ABV_TOLERANCE_PCT
     )
     implausible = abv is not None and not 0 < abv <= MAX_PLAUSIBLE_ABV
+    # "6.5%" read as "65%": the decimal point is the smallest mark in the
+    # statement and the first a blurred photo loses.
+    decimal_slip = (abv is not None and expected_pct is not None and not implausible
+                    and (abs(abv - 10 * expected_pct) < 0.01 or abs(10 * abv - expected_pct) < 0.01))
 
-    if implausible or proof_backs_application:
+    if implausible or proof_backs_application or decimal_slip:
         why = (f"{abv:g}% is not a possible alcohol content" if implausible else
                f"the label's own proof statement ({proof:g} Proof) matches the application's "
-               f"{expected_pct:g}%")
+               f"{expected_pct:g}%" if proof_backs_application else
+               f"it differs from the application's {expected_pct:g}% only by a decimal point")
         results.append(CheckResult(
             field="alcohol_content", verdict=Verdict.FLAG, observed=statement,
             expected=f"{expected_pct}% Alc./Vol." if expected_pct is not None else None,
@@ -293,7 +330,7 @@ def check_alcohol_content(expected_pct: float | None, statement: str | None,
 # --- net contents ----------------------------------------------------------
 
 _QTY = re.compile(
-    r"(\d+(?:[.,]\d+)*)\s*"
+    r"(\d+\s*/\s*\d+|\d+(?:[.,]\d+)*)\s*"
     r"(fl\.?\s*oz|fluid\s+ounces?|pints?|quarts?|gallons?|ml|millilitres?|milliliters?|cl"
     r"|centilitres?|centiliters?|l|liters?|litres?)(?![a-z])",
     re.IGNORECASE,
@@ -321,31 +358,88 @@ def parse_net_contents_ml(text: str) -> float | None:
     """'750 mL' == '750ml' == '75 cl' == '0.75 L'; '12 FL OZ' == 354.9 mL.
 
     '1,000 mL' is a thousand (a comma before three digits of a millilitre
-    count); '1,75 L' is one and three quarters. '1 PINT 6 FL OZ', the form
-    27 CFR 7.70 prescribes for malt beverages over a pint, is the sum.
+    count); '1,75 L' is one and three quarters. '1/2 GALLON' is a half.
+    '1 PINT 6 FL OZ' and '1 QUART 1 PINT', the forms 27 CFR 7.70 prescribes
+    for malt beverages, are sums: each US unit smaller than the last is added.
     """
     found = list(_QTY.finditer(text))
     if not found:
         return None
 
+    def unit_of(m: re.Match) -> str:
+        return re.sub(r"[^a-z]", "", m.group(2).lower())
+
     def ml(m: re.Match) -> float:
-        unit = re.sub(r"[^a-z]", "", m.group(2).lower())
+        unit = unit_of(m)
         digits = m.group(1)
+        if "/" in digits:
+            numerator, denominator = (float(x) for x in digits.split("/"))
+            return numerator / denominator * _TO_ML[unit] if denominator else 0.0
         if unit in ("ml", "millilitre", "milliliter", "millilitres", "milliliters") \
                 and re.fullmatch(r"\d{1,3}(?:,\d{3})+", digits):
             digits = digits.replace(",", "")
         return float(digits.replace(",", ".")) * _TO_ML[unit]
 
-    first = found[0]
-    total = ml(first)
-    first_unit = re.sub(r"[^a-z]", "", first.group(2).lower())
-    if first_unit.rstrip("s") in ("pint", "quart", "gallon") and len(found) > 1 \
-            and "oz" in found[1].group(2).lower():
-        total += ml(found[1])
+    us_rank = {"gallon": 4, "quart": 3, "pint": 2, "floz": 1, "fluidounce": 1}
+    total = ml(found[0])
+    rank = us_rank.get(unit_of(found[0]).rstrip("s"), 0)
+    for m in found[1:]:
+        next_rank = us_rank.get(unit_of(m).rstrip("s"), 0)
+        if not 0 < next_rank < rank:
+            break
+        total += ml(m)
+        rank = next_rank
     return total
 
 
-def check_net_contents(expected: str | None, observed: str | None) -> CheckResult:
+# 27 CFR 5.203(a) and 4.72(a): the only container sizes spirits and wine may
+# be sold in, in mL. Wine also comes in even liters from 4 L up (4.72(b)).
+STANDARD_FILLS_ML: dict[str, tuple[int, ...]] = {
+    "spirits": (3750, 3000, 2000, 1800, 1750, 1000, 945, 900, 750, 720, 710, 700, 570, 500,
+                475, 375, 355, 350, 331, 250, 200, 187, 100, 50),
+    "wine": (3000, 2250, 1800, 1500, 1000, 750, 720, 700, 620, 600, 568, 550, 500, 473, 375,
+             360, 355, 330, 300, 250, 200, 187, 180, 100, 50),
+}
+_FILL_SECTION = {"spirits": "27 CFR 5.203", "wine": "27 CFR 4.72"}
+
+
+_METRIC_UNIT = re.compile(r"\d\s*(?:ml|millilit(?:re|er)s?|l|lit(?:re|er)s?)\b", re.IGNORECASE)
+_US_UNIT = re.compile(r"\b(?:fl\.?\s*oz|fluid\s+ounces?|pints?|quarts?|gallons?)\b", re.IGNORECASE)
+
+
+def _required_units_missing(statement: str, commodity: Commodity | None) -> str | None:
+    """Which unit rule a net contents statement breaks, as a sentence.
+
+    Spirits and wine are stated in liters or milliliters (27 CFR 5.70(a),
+    4.37(a)); centiliters and U.S. units may appear only beside that. Malt
+    beverages are stated in U.S. units (7.70); metric may appear only beside
+    them. "75 cl" alone on a whisky states the right volume the wrong way.
+    """
+    if commodity in ("spirits", "wine") and not _METRIC_UNIT.search(statement):
+        section = "27 CFR 5.70(a)" if commodity == "spirits" else "27 CFR 4.37(a)"
+        return (f"the label states it as {statement!r}. {section} requires liters or "
+                "milliliters; other units may appear only beside that statement. Confirm "
+                "on the artwork.")
+    if commodity == "malt" and not _US_UNIT.search(statement):
+        return (f"the label states it as {statement!r}. 27 CFR 7.70 requires U.S. units "
+                "(fluid ounces, pints, quarts or gallons); metric may appear only beside "
+                "them. Confirm on the artwork.")
+    return None
+
+
+def is_standard_fill(ml: float, commodity: Commodity | None) -> bool | None:
+    """Whether a volume is an authorized size; None where none are prescribed."""
+    sizes = STANDARD_FILLS_ML.get(commodity or "")
+    if not sizes:
+        return None
+    if commodity == "wine" and ml >= 4000:
+        return abs(ml / 1000 - round(ml / 1000)) < 0.001
+    # 3 mL covers a US-unit statement rounded to a tenth of an ounce.
+    return any(abs(ml - size) <= 3 for size in sizes)
+
+
+def check_net_contents(expected: str | None, observed: str | None,
+                       commodity: Commodity | None = None) -> CheckResult:
     citation = cite("net_contents", "spirits")
     if not observed:
         return CheckResult(
@@ -368,13 +462,32 @@ def check_net_contents(expected: str | None, observed: str | None) -> CheckResul
     tolerance = (FL_OZ_TOLERANCE_ML if "oz" in f"{expected} {observed}".lower()
                  else NET_CONTENTS_TOLERANCE_ML)
     if abs(exp_ml - obs_ml) <= tolerance:
+        wrong_form = _required_units_missing(observed, commodity)
+        if wrong_form:
+            # The right volume in a form the part does not accept. Referred:
+            # OCR may have missed the required statement printed nearby.
+            return CheckResult(
+                field="net_contents", verdict=Verdict.FLAG, expected=expected, observed=observed,
+                reason=f"Both resolve to {obs_ml:.0f} mL, but {wrong_form}", citation=citation,
+            )
         return CheckResult(
             field="net_contents", verdict=Verdict.PASS, expected=expected, observed=observed,
-            reason=f"Both resolve to {obs_ml:g} mL.", citation=citation,
+            reason=f"Both resolve to {obs_ml:.0f} mL.", citation=citation,
+        )
+    if is_standard_fill(obs_ml, commodity) is False and is_standard_fill(exp_ml, commodity):
+        # "750 mL" read as "790 mL" or "7950 mL". No such bottle can be sold,
+        # so the reading is far likelier wrong than the label.
+        return CheckResult(
+            field="net_contents", verdict=Verdict.FLAG, expected=expected, observed=observed,
+            reason=(f"The label reads {obs_ml:g} mL, which is not an authorized container size "
+                    f"for {'wine' if commodity == 'wine' else 'distilled spirits'} "
+                    f"({_FILL_SECTION[commodity]}), so it is probably misread. The application "
+                    f"states {exp_ml:g} mL; confirm on the artwork."),
+            citation=citation, read_uncertain=True,
         )
     return CheckResult(
         field="net_contents", verdict=Verdict.FAIL, expected=expected, observed=observed,
-        reason=f"Label states {obs_ml:g} mL but the application states {exp_ml:g} mL.",
+        reason=f"Label states {obs_ml:.0f} mL but the application states {exp_ml:.0f} mL.",
         citation=citation,
     )
 
@@ -387,7 +500,6 @@ def check_net_contents(expected: str | None, observed: str | None) -> CheckResul
 # see that an element went unverified rather than quietly disappearing.
 NOT_PROVIDED = "Not provided on the application, so this element was not verified."
 
-CLASS_TYPE_PASS_THRESHOLD = 92.0
 CLASS_TYPE_FLAG_THRESHOLD = 75.0
 
 
@@ -412,6 +524,18 @@ def check_class_type(expected: str | None, observed: str | None,
         )
 
     score = fuzz.ratio(normalize_brand(expected), normalize_brand(observed))
+    if same_words(expected, observed):
+        return CheckResult(
+            field="class_type", verdict=Verdict.PASS, expected=expected, observed=observed,
+            reason="Exact match." if expected == observed
+            else "Matches; only case, punctuation or spacing differ.",
+            citation=citation)
+    if score < CLASS_TYPE_FLAG_THRESHOLD and is_fragment_of(observed, expected):
+        return CheckResult(
+            field="class_type", verdict=Verdict.FLAG, expected=expected, observed=observed,
+            reason=(f"The label reads {observed!r}, which looks like part of the application's "
+                    "designation; the rest may not have been read. Confirm on the artwork."),
+            citation=citation, read_uncertain=True)
     if score < CLASS_TYPE_FLAG_THRESHOLD and brand and is_part_of(observed, brand):
         # "DISTILLERY" read as the class of "OLD TOM DISTILLERY": a line of a
         # stacked brand taken for the designation, so the designation itself
@@ -421,8 +545,7 @@ def check_class_type(expected: str | None, observed: str | None,
             reason=(f"The line read as the class/type, {observed!r}, is part of the brand name, "
                     "so the designation may not have been found. Confirm on the artwork."),
             citation=citation, read_uncertain=True)
-    if score < CLASS_TYPE_PASS_THRESHOLD and (is_part_of(observed, expected)
-                                              or is_part_of(expected, observed)):
+    if is_part_of(observed, expected) or is_part_of(expected, observed):
         # "Gin" against "Dry Gin", "Tequila" against "Tequila Blanco": one
         # designation contains the other. Whether the shorter one is enough
         # is a judgement about the class, so an agent makes it.
@@ -431,12 +554,10 @@ def check_class_type(expected: str | None, observed: str | None,
             reason=(f"One designation contains the other ({observed!r} on the label, "
                     f"{expected!r} on the application); agent review required."),
             citation=citation)
-    if score >= CLASS_TYPE_PASS_THRESHOLD:
-        verdict, reason = Verdict.PASS, (
-            "Exact match." if expected == observed
-            else f"Matches after normalization (similarity {score:.0f}%)."
-        )
-    elif score >= CLASS_TYPE_FLAG_THRESHOLD:
+    # The designation is regulated vocabulary: "California Rose Wine" is not
+    # "California Red Wine" at any similarity, so nothing short of the same
+    # words passes.
+    if score >= CLASS_TYPE_FLAG_THRESHOLD:
         verdict = Verdict.FLAG
         reason = f"Designation differs from the application (similarity {score:.0f}%); agent review required."
     else:
@@ -450,6 +571,35 @@ def check_class_type(expected: str | None, observed: str | None,
 # --- bottler / producer -----------------------------------------------------
 
 BOTTLER_PASS_THRESHOLD = 88.0
+
+# "Distilled and bottled by", "Imported by": the statement's phrase, not the name.
+_BY_PHRASE = re.compile(r"^.*?\bby\b[\s:]*", re.IGNORECASE)
+# Words every producer shares. Compared with them left in, "XYZ Distilling
+# Company" scored 90% against "ABC Distilling Company" and passed.
+_GENERIC_NAME_WORDS = frozenset({
+    "co", "company", "inc", "incorporated", "llc", "ltd", "limited", "corp", "corporation",
+    "distilling", "distillery", "distilleries", "distillers", "brewing", "brewery", "brewers",
+    "winery", "wines", "vineyards", "vineyard", "cellars", "spirits", "imports", "importers",
+    "importing", "trading", "group", "the", "and", "of",
+})
+
+
+def distinctive_name(name: str) -> str:
+    """The words that tell one producer from another."""
+    words = normalize_brand(_BY_PHRASE.sub("", name)).split()
+    kept = [w for w in words if w not in _GENERIC_NAME_WORDS]
+    return " ".join(kept or words)
+
+
+ADDRESS_AS_NAME_THRESHOLD = 80.0
+
+
+def is_address_of(observed_name: str, expected_address: str | None) -> bool:
+    """Whether the text read as the name is the application's address."""
+    if not expected_address:
+        return False
+    return fuzz.token_sort_ratio(normalize_brand(_BY_PHRASE.sub("", observed_name)),
+                                 normalize_brand(expected_address)) >= ADDRESS_AS_NAME_THRESHOLD
 
 
 def check_bottler(expected_name: str | None, expected_address: str | None,
@@ -480,11 +630,34 @@ def check_bottler(expected_name: str | None, expected_address: str | None,
             results.append(CheckResult(
                 field="bottler_name", verdict=Verdict.FAIL, expected=expected_name,
                 reason="No bottler or producer name found on the label.", citation=citation))
+        elif not normalize_brand(_BY_PHRASE.sub("", observed_name)):
+            # "istilled and Bottled by" with nothing after it: the statement
+            # was found and the name in it was not read. Compared as a name,
+            # it scored 0% and failed a compliant phone photograph when another
+            # deskew fill was tried.
+            results.append(CheckResult(
+                field="bottler_name", verdict=Verdict.FLAG, expected=expected_name,
+                observed=observed_name, read_uncertain=True, citation=citation,
+                reason=(f"The bottler statement reads {observed_name!r}, and the name after "
+                        "it could not be read. Confirm on the artwork.")))
         else:
-            score = fuzz.token_set_ratio(normalize_brand(expected_name),
-                                         normalize_brand(observed_name))
+            score = fuzz.token_sort_ratio(distinctive_name(expected_name),
+                                          distinctive_name(observed_name))
+            unsure = False
             if score >= BOTTLER_PASS_THRESHOLD:
                 verdict, reason = Verdict.PASS, f"Matches the application (similarity {score:.0f}%)."
+            elif is_part_of(_BY_PHRASE.sub("", observed_name), expected_name):
+                verdict = Verdict.FLAG
+                reason = (f"The label reads {observed_name!r}, which is part of the application's "
+                          "name; the rest may not have been read. Confirm on the artwork.")
+            elif is_address_of(observed_name, expected_address):
+                # "Bardstown, Kentucky" read as the name: OCR could not read
+                # the name line, and the address under it took its place. The
+                # stress test found this on heavy JPEG and on a tilted copy of
+                # compliant labels, each of which failed.
+                verdict, unsure = Verdict.FLAG, True
+                reason = (f"The line read as the name, {observed_name!r}, is the application's "
+                          "address, so the name line may not have been read. Confirm on the artwork.")
             elif score >= 65.0:
                 verdict = Verdict.FLAG
                 reason = f"Differs from the application (similarity {score:.0f}%); agent review required."
@@ -493,7 +666,7 @@ def check_bottler(expected_name: str | None, expected_address: str | None,
                 reason = f"Bottler name does not match the application (similarity {score:.0f}%)."
             results.append(CheckResult(
                 field="bottler_name", verdict=verdict, expected=expected_name,
-                observed=observed_name, reason=reason, citation=citation))
+                observed=observed_name, reason=reason, citation=citation, read_uncertain=unsure))
 
     if expected_address:
         if not observed_address:
@@ -535,8 +708,16 @@ def country_name(value: str) -> str:
 
 
 def is_import(country: str | None) -> bool:
-    """A record with no country, or a domestic one, is not an import."""
-    return bool(country) and not _DOMESTIC.search(country)
+    """A record with no country, or a domestic one, is not an import.
+
+    A label's "United Stafes" is OCR, not an import: close spellings of the
+    domestic names count as domestic.
+    """
+    if not country or _DOMESTIC.search(country):
+        return False
+    name = normalize_brand(country_name(country))
+    return not any(fuzz.ratio(name, domestic) >= 85
+                   for domestic in ("united states", "united states of america", "america"))
 
 
 def check_country_of_origin(expected: str | None, observed: str | None) -> CheckResult:
@@ -553,6 +734,13 @@ def check_country_of_origin(expected: str | None, observed: str | None) -> Check
             field="country_of_origin", verdict=Verdict.PASS, observed=observed,
             reason=NOT_PROVIDED, citation=citation, advisory=True,
         )
+
+    if not is_import(expected) and observed and is_import(observed):
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.FLAG, expected=expected,
+            observed=observed, citation=citation,
+            reason=(f"The label states {observed!r}, but the application declares a domestic "
+                    "product. Confirm the country of origin with the applicant."))
 
     if not is_import(expected):
         return CheckResult(
@@ -584,13 +772,20 @@ def check_country_of_origin(expected: str | None, observed: str | None) -> Check
             citation=citation, read_uncertain=True,
         )
 
-    score = fuzz.token_set_ratio(normalize_brand(country_name(expected)),
-                                 normalize_brand(observed_country))
-    if score >= 80.0:
+    # The same country, or nothing: "Austria" is 88% similar to "Australia",
+    # and "Northern Ireland" contains "Ireland". A near spelling is referred,
+    # because OCR produces those too.
+    if same_words(country_name(expected), observed_country):
         return CheckResult(
             field="country_of_origin", verdict=Verdict.PASS, expected=expected,
-            observed=observed, reason=f"Matches the application (similarity {score:.0f}%).",
-            citation=citation)
+            observed=observed, reason="Matches the application.", citation=citation)
+    score = fuzz.ratio(normalize_brand(country_name(expected)), normalize_brand(observed_country))
+    if score >= 80.0:
+        return CheckResult(
+            field="country_of_origin", verdict=Verdict.FLAG, expected=expected,
+            observed=observed, citation=citation,
+            reason=(f"The country on the label is similar to the application's but not the same "
+                    f"(similarity {score:.0f}%). It may be misread; confirm on the artwork."))
     return CheckResult(
         field="country_of_origin", verdict=Verdict.FAIL, expected=expected,
         observed=observed,

@@ -20,8 +20,9 @@ Commodity = Literal["wine", "spirits", "malt"]
 # The last designation word decides: "Bourbon Barrel Aged Stout" is a malt
 # beverage and "Kentucky Straight Bourbon Whiskey" is a spirit.
 _WORDS: dict[Commodity, str] = {
+    # "Barley wine" is an ale; matched whole, so its "wine" never counts.
     "malt": (r"beer|ale|lager|stout|porter|pilsner|pilsener|ipa|malt beverage|malt liquor|bock"
-             r"|hefeweizen|weissbier|saison|k[oö]lsch|hard seltzer"),
+             r"|hefeweizen|weissbier|saison|k[oö]lsch|hard seltzer|barley\s*wine"),
     "wine": (r"wine|champagne|sparkling|cabernet|sauvignon|chardonnay|merlot|pinot|riesling"
              r"|zinfandel|syrah|shiraz|malbec|ros[eé]|port|sherry|madeira|vermouth|sake|cider"
              r"|mead|prosecco|cava|grenache|tempranillo|sangiovese|chianti|moscato|muscat|claret"),

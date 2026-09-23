@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY fixtures/labels ./fixtures/labels
+COPY fixtures/ai ./fixtures/ai
 COPY fixtures/records ./fixtures/records
 
 # Nothing is written to disk by the application; run as an unprivileged user.

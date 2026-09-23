@@ -64,6 +64,13 @@ class LabelExtraction(BaseModel):
         default=None,
         description="Verbatim transcription of the government warning, including the prefix.",
     )
+    warning_unsure: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Words of the warning transcription that OCR read with low confidence: "
+            "border ornaments and specks. Difference in them alone never rejects."
+        ),
+    )
     warning_prefix_is_bold: bool | None = Field(
         default=None,
         description="Advisory typographic observation; None when not determinable.",
@@ -108,6 +115,19 @@ class LabelExtraction(BaseModel):
         ),
     )
     notes: list[str] = Field(default_factory=list)
+    image_soft: bool = Field(
+        default=False,
+        description=("The image is out of focus or was too small to read reliably. Nothing "
+                     "read from it can reject the label."),
+    )
+    unread_text: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Lines OCR detected but could not read reliably, outside the warning. "
+            "While any remain, a field that was not found may be among them, so "
+            "its absence refers the label instead of rejecting it."
+        ),
+    )
     field_boxes: dict[str, list[list[float]]] = Field(
         default_factory=dict,
         description=(

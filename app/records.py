@@ -37,6 +37,27 @@ ALIASES = {
 }
 
 
+def parse_abv(value: object) -> float | None:
+    """'45', '45.0', '45%', '45 %', '40,5' -> a number; '' -> None.
+
+    Raises ValueError for anything that is not a percentage above 0 and at
+    most 100. One parser for the form and for records files: the same typo
+    ("450" for "45.0") is refused in both places, never accepted in one and
+    compared against the label in the other.
+    """
+    cleaned = str(value).replace("%", "").replace(",", ".").strip()
+    if not cleaned:
+        return None
+    try:
+        abv = float(cleaned)
+    except ValueError:
+        abv = math.nan
+    # A nan compares false with everything, so "nan" fails this test too.
+    if not 0 < abv <= 100:
+        raise ValueError(cleaned)
+    return abv
+
+
 @dataclass
 class ParsedRecords:
     records: list[ApplicationRecord] = field(default_factory=list)
@@ -82,16 +103,15 @@ def _coerce(row: dict, index: int) -> tuple[ApplicationRecord | None, str | None
             image = str(value)
         elif canonical == "alcohol_content_pct":
             try:
-                abv = float(str(value).replace("%", "").replace(",", ".").strip())
+                mapped[canonical] = parse_abv(value)
             except ValueError:
-                abv = math.nan
-            if not math.isfinite(abv):
                 return None, None, (
-                    f"Row {index}: alcohol content {value!r} is not a number."
+                    f"Row {index}: alcohol content {value!r} must be a number between 0 and "
+                    "100, for example 45 or 45.5."
                 )
-            mapped[canonical] = abv
         else:
-            mapped[canonical] = value
+            # A JSON export can carry a numeric TTB ID; every field is text.
+            mapped[canonical] = value if isinstance(value, str) else str(value)
 
     if not mapped.get("cola_id"):
         return None, None, f"Row {index}: no COLA ID column found or the value is empty."
@@ -113,12 +133,20 @@ def _dialect(text: str) -> type[csv.Dialect] | csv.Dialect:
         return csv.excel
 
 
-def parse_records(data: bytes, filename: str = "") -> ParsedRecords:
-    # Excel's "Unicode text" export is UTF-16 with a byte-order mark.
+def _decode(data: bytes) -> str:
+    """UTF-16 with a byte-order mark (Excel's "Unicode text"), UTF-8, or the
+    Windows code page Excel uses for a plain "CSV" save. Decoded as UTF-8
+    regardless, "Château" from a Windows export became "Ch�teau"."""
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
-        text = data.decode("utf-16", errors="replace").strip()
-    else:
-        text = data.decode("utf-8-sig", errors="replace").strip()
+        return data.decode("utf-16", errors="replace")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
+def parse_records(data: bytes, filename: str = "") -> ParsedRecords:
+    text = _decode(data).strip()
     if not text:
         return ParsedRecords(errors=["The records file is empty."])
 
@@ -134,19 +162,25 @@ def parse_records(data: bytes, filename: str = "") -> ParsedRecords:
             loaded = loaded.get("records", [loaded])
         if not isinstance(loaded, list):
             return ParsedRecords(errors=["Expected a JSON array of application records."])
-        rows = [r for r in loaded if isinstance(r, dict)]
+        # A JSON row is numbered by its place in the array.
+        rows = [(i, r) for i, r in enumerate(loaded, start=1) if isinstance(r, dict)]
     else:
+        # A CSV row is numbered as a spreadsheet numbers it, heading row
+        # included, so "Row 3" is the row the agent sees as 3 in Excel.
         try:
-            rows = list(csv.DictReader(io.StringIO(text), dialect=_dialect(text)))
+            reader = csv.DictReader(io.StringIO(text), dialect=_dialect(text))
+            rows = [(reader.line_num, row) for row in reader]
         except csv.Error as exc:
             return ParsedRecords(errors=[f"Could not read the CSV records file: {exc}."])
 
     if not rows:
-        return ParsedRecords(errors=["No application records were found in that file."])
+        return ParsedRecords(errors=[(
+            "No application records were found in that file. It needs a heading row with "
+            "at least a COLA ID column and a brand name column.")])
 
     out = ParsedRecords()
     seen: set[str] = set()
-    for i, row in enumerate(rows, start=1):
+    for i, row in rows:
         record, image, error = _coerce(row, i)
         if error:
             out.errors.append(error)

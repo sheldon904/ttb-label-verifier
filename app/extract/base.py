@@ -61,6 +61,7 @@ def to_extraction(observations: dict) -> LabelExtraction:
         # Note: warning_text is NOT passed through _clean's stripping of case or
         # punctuation -- only surrounding whitespace. Case is substantive here.
         warning_text=_clean(observations.get("warning_text")),
+        warning_unsure=[str(w) for w in observations.get("warning_unsure") or [] if str(w).strip()],
         warning_prefix_is_bold=bold if isinstance(bold, bool) else None,
         warning_small_type=observations.get("warning_small_type") is True,
         warning_legibility=(
@@ -69,6 +70,8 @@ def to_extraction(observations: dict) -> LabelExtraction:
             else ("read" if _clean(observations.get("warning_text")) else "absent")
         ),
         notes=[str(n) for n in notes if str(n).strip()],
+        unread_text=[str(t) for t in observations.get("unread_text") or [] if str(t).strip()],
+        image_soft=observations.get("image_soft") is True,
         field_confidence={
             str(k): float(v)
             for k, v in (observations.get("field_confidence") or {}).items()

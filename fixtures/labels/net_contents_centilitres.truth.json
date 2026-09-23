@@ -1,6 +1,6 @@
 {
   "id": "net_contents_centilitres",
-  "description": "'75 cl' on an import against '750 mL' on the application -- equivalent",
+  "description": "'75 cl' alone against '750 mL': the same volume, but 27 CFR 5.70(a) asks for liters or milliliters, so it is referred",
   "record": {
     "cola_id": "24-040",
     "brand_name": "Copper Ridge Reserve",
@@ -24,6 +24,8 @@
     "warning_legibility": "read",
     "legibility_notes": []
   },
-  "expected_verdict": "pass",
-  "expected_failing_fields": []
+  "expected_verdict": "flag",
+  "expected_failing_fields": [
+    "net_contents"
+  ]
 }

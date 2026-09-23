@@ -26,15 +26,17 @@ from app.assist.second_opinion import build_reader, eligible_rows
 from app.assist.triage import build_triage
 from app.config import REPO_ROOT, load_settings
 from app.extract.factory import build_extractor
-from app.extract.imageprep import UnreadableImageError
+from app.extract.imageprep import UnreadableImageError, browser_preview
 from app.extract.stub import StubExtractionMissing
 from app.models import ApplicationRecord
 from app.pipeline import ObservationCache, review_label
 from app.ratelimit import RateLimitMiddleware, TokenBuckets
-from app.records import parse_records
+from app.records import parse_abv, parse_records
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
-FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
+# Samples come from both fixture sets: labels the generator drew (PNG) and
+# labels an image model drew (JPEG).
+FIXTURE_DIRS = (REPO_ROOT / "fixtures" / "labels", REPO_ROOT / "fixtures" / "ai")
 SAMPLE_BATCH = REPO_ROOT / "fixtures" / "records" / "batch-sample.csv"
 
 # The seeded demos. A grader rarely arrives holding label images, so the tool
@@ -52,6 +54,8 @@ EXAMPLES = {
     "brand_near_miss": ("A brand name one letter different from the application", "flag"),
     "photo_skewed": ("A compliant label photographed at an angle", "pass"),
     "photo_glare": ("A compliant label photographed with glare", "pass"),
+    "ai_wine": ("A wine label made with an AI image generator", "pass"),
+    "ai_bourbon": ("An AI-generated label whose warning repeats a word", "fail"),
 }
 EXAMPLE_IDS = tuple(EXAMPLES)
 
@@ -104,7 +108,8 @@ async def readable_validation_error(request: Request, exc: RequestValidationErro
         else:
             other.append(f"{field}: {err.get('msg', 'is not valid')}")
     if missing:
-        detail = "Please provide " + " and ".join(missing) + "."
+        listed = ", ".join(missing[:-1]) + " and " + missing[-1] if len(missing) > 1 else missing[0]
+        detail = f"Please provide {listed}."
     else:
         detail = "The request was not valid. " + "; ".join(other)
     return JSONResponse({"detail": detail, "errors": jsonable_encoder(exc.errors())},
@@ -162,15 +167,18 @@ def review_gate() -> asyncio.Semaphore:
 def load_example(example_id: str) -> dict:
     if not _EXAMPLE_ID.match(example_id):
         raise HTTPException(404, "That example is not available.")
-    path = FIXTURE_DIR / f"{example_id}.truth.json"
-    if not path.is_file():
-        raise HTTPException(404, "That example is not available.")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data["image_path"] = FIXTURE_DIR / f"{example_id}.png"
-    return data
+    for folder in FIXTURE_DIRS:
+        truth = folder / f"{example_id}.truth.json"
+        images = [folder / f"{example_id}{ext}" for ext in (".png", ".jpg")]
+        image = next((i for i in images if i.is_file()), None)
+        if truth.is_file() and image is not None:
+            data = json.loads(truth.read_text(encoding="utf-8"))
+            data["image_path"] = image
+            return data
+    raise HTTPException(404, "That example is not available.")
 
 
-@app.get("/healthz")
+@app.get("/healthz", summary="Health check", tags=["Service"])
 async def healthz() -> dict:
     return {"ok": True, "extractor": settings.extractor}
 
@@ -198,12 +206,13 @@ async def index(request: Request):
     })
 
 
-@app.get("/examples/{example_id}/image")
+@app.get("/examples/{example_id}/image", summary="A sample label image", tags=["Samples"])
 async def example_image(example_id: str):
-    return FileResponse(load_example(example_id)["image_path"], media_type="image/png")
+    path = load_example(example_id)["image_path"]
+    return FileResponse(path, media_type="image/jpeg" if path.suffix == ".jpg" else "image/png")
 
 
-@app.get("/examples/batch")
+@app.get("/examples/batch", summary="The sample batch: records and image names", tags=["Samples"])
 async def example_batch():
     """The committed sample batch: records plus the fixture images they refer to.
 
@@ -274,6 +283,8 @@ async def _run(raw: bytes, record: ApplicationRecord,
             "upscale_factor": bundle.prepared.upscale_factor,
         },
         "cache_hit": bundle.telemetry.get("cache_hit", False),
+        # A JPEG to show in place of a TIFF, which browsers cannot display.
+        "preview": browser_preview(raw),
     })
 
 
@@ -291,19 +302,25 @@ def _second_opinion_summary(telemetry: dict | None) -> dict | None:
 
 def _parse_abv(value: str) -> float | None:
     """'45', '45.0', '45%', '45 %', '40,5' -> a number. Agents type what the form shows."""
-    cleaned = value.replace("%", "").replace(",", ".").strip()
-    if not cleaned:
-        return None
     try:
-        abv = float(cleaned)
+        return parse_abv(value)
     except ValueError:
-        abv = math.nan
-    # "nan" and "inf" parse as floats, and a nan compares unequal to every
-    # label, which would fail the alcohol row on any artwork.
-    if not 0 < abv <= 100:
         raise HTTPException(400, "Alcohol content must be a number between 0 and 100, "
-                                 "for example 45 or 45.5.")
-    return abv
+                                 "for example 45 or 45.5.") from None
+
+
+MIB = 1024 * 1024
+
+
+def _too_large(what: str, size: int) -> str:
+    """"That image is 13 MB. The limit is 12 MB." in the units Windows shows.
+
+    The size rounds up and the limit down, so a file over the limit never
+    reads as within it.
+    """
+    shown = math.ceil(size / MIB * 10) / 10
+    limit = math.floor(settings.max_upload_bytes / MIB * 10) / 10
+    return f"That {what} is {shown:g} MB. The limit is {limit:g} MB. Please upload a smaller file."
 
 
 def _record_from_form(cola_id: str, brand_name: str, alcohol_content_pct: str,
@@ -323,7 +340,7 @@ def _record_from_form(cola_id: str, brand_name: str, alcohol_content_pct: str,
     )
 
 
-@app.post("/api/review")
+@app.post("/api/review", summary="Check one label against its application", tags=["Review"])
 async def api_review(
     image: UploadFile,
     cola_id: str = Form(...),
@@ -336,22 +353,24 @@ async def api_review(
     country_of_origin: str = Form(""),
     second_opinion: SecondOpinionMode = SECOND_OPINION_QUERY,
 ):
+    """Checks a label image against the application details sent with it.
+
+    Returns the verdict (pass, flag or fail), one row per check with the
+    regulation behind it, where on the image each field was read, and notes
+    on how the image was prepared. A label OCR cannot read is referred (flag),
+    never rejected. An image with no readable text at all is a 400.
+    """
     # One byte past the limit is enough to know it is too large; reading the
     # whole file first would hold an arbitrarily large upload in memory.
     raw = await image.read(settings.max_upload_bytes + 1)
     if len(raw) > settings.max_upload_bytes:
-        size = image.size if image.size else len(raw)
-        raise HTTPException(
-            413,
-            f"That image is {size / 1e6:.1f} MB. The limit is "
-            f"{settings.max_upload_bytes / 1e6:.0f} MB. Please upload a smaller file.",
-        )
+        raise HTTPException(413, _too_large("image", image.size or len(raw)))
     record = _record_from_form(cola_id, brand_name, alcohol_content_pct, net_contents,
                                class_type, bottler_name, bottler_address, country_of_origin)
     return await _run(raw, record, second_opinion)
 
 
-@app.post("/api/review/example/{example_id}")
+@app.post("/api/review/example/{example_id}", summary="Check a sample label", tags=["Samples"])
 async def api_review_example(
     example_id: str,
     cola_id: str = Form(""),
@@ -376,7 +395,7 @@ async def api_review_example(
     return await _run(ex["image_path"].read_bytes(), record, second_opinion)
 
 
-@app.post("/api/batch/records")
+@app.post("/api/batch/records", summary="Read a records file for a batch", tags=["Review"])
 async def api_batch_records(records: UploadFile):
     """Parse a CSV or JSON export into application records.
 
@@ -385,9 +404,11 @@ async def api_batch_records(records: UploadFile):
     """
     raw = await records.read(settings.max_upload_bytes + 1)
     if len(raw) > settings.max_upload_bytes:
-        raise HTTPException(413, "That records file is too large.")
+        raise HTTPException(413, _too_large("records file", records.size or len(raw)))
 
-    parsed = parse_records(raw, records.filename or "")
+    # A large file takes a second or more to parse; off the event loop, every
+    # other request carries on meanwhile.
+    parsed = await asyncio.to_thread(parse_records, raw, records.filename or "")
     if len(parsed.records) > settings.max_batch_labels:
         raise HTTPException(
             400,

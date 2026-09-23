@@ -16,9 +16,15 @@ from dataclasses import dataclass, replace
 from app.assist.second_opinion import SecondOpinionReader, apply_second_opinion
 from app.assist.triage import TriageProvider
 from app.extract.base import LabelExtractor, to_extraction
-from app.extract.imageprep import PreparedImage, prepare_for_ocr
+from app.extract.imageprep import PreparedImage, UnreadableImageError, prepare_for_ocr
 from app.models import ApplicationRecord, LabelExtraction, ReviewResult
 from app.rules.engine import review
+
+# A blank page, a photograph of something else, or type blurred past reading.
+# There is nothing to check, and a checklist of "not found" rows would read as
+# a rejection of the label.
+NOTHING_READ = ("No text could be read from this image. Check that it is the label artwork; "
+                "if it is, a sharper, brighter or larger copy may help.")
 
 
 @dataclass
@@ -94,6 +100,9 @@ async def review_label(
         telemetry["cache_hit"] = False
         if cache is not None:
             cache.put(digest, observations, prepared)
+
+    if observations.get("words_read") == 0:
+        raise UnreadableImageError(NOTHING_READ)
 
     extraction = to_extraction(observations)
     result = review(record, extraction)

@@ -1,0 +1,34 @@
+{
+  "id": "ai_beer",
+  "description": "AI-generated beer label, warning on a white strip; the model printed \"impairs' ability\"",
+  "record": {
+    "cola_id": "27-003",
+    "brand_name": "Harbor Light",
+    "class_type": "India Pale Ale",
+    "alcohol_content_pct": 6.5,
+    "net_contents": "12 fl oz",
+    "bottler_name": "Harbor Light Brewing Co.",
+    "bottler_address": "Portland, Maine"
+  },
+  "observations": {
+    "brand_name": "HARBOR LIGHT",
+    "class_type": "India Pale Ale",
+    "alcohol_statement": "6.5% ALC/VOL",
+    "net_contents": "12 FL OZ",
+    "bottler_name": "Brewed and Canned by Harbor Light Brewing Co.",
+    "bottler_address": "Portland, Maine",
+    "country_of_origin": null,
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs' ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_small_type": false,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "fail",
+  "expected_failing_fields": [
+    "government_warning"
+  ],
+  "generated_by": "google/gemini-3.1-flash-image",
+  "rules_verdict": "flag",
+  "rules_verdict_why": "The misspellings sit within two letters of the statute's words or drop one word, which the rules cannot tell from a misread. They refer the label with every difference listed, so an agent rejects it; they never pass it."
+}

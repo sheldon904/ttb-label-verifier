@@ -288,10 +288,12 @@ def build_catalog() -> list[Fixture]:
     # --- net contents -----------------------------------------------------
     f.append(Fixture(
         id="net_contents_centilitres",
-        description="'75 cl' on an import against '750 mL' on the application -- equivalent",
+        description=("'75 cl' alone against '750 mL': the same volume, but 27 CFR 5.70(a) "
+                     "asks for liters or milliliters, so it is referred"),
         spec=LabelSpec(**{**COPPER_RIDGE, "net_contents": "75 cl"}),
         record=_record("24-040", COPPER_RIDGE, net_contents="750 mL"),
-        expected_verdict="pass",
+        expected_verdict="flag",
+        expected_failing_fields=["net_contents"],
         truth_bold=True,
     ))
     f.append(Fixture(

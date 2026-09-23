@@ -63,7 +63,8 @@ def test_one_bad_row_does_not_lose_the_others():
     p = parse_records(csv.encode(), "x.csv")
     assert [r.cola_id for r in p.records] == ["24-001", "24-003"]
     assert len(p.errors) == 1
-    assert "not a number" in p.errors[0]
+    # Row 3 as a spreadsheet numbers it: the heading is row 1.
+    assert p.errors[0].startswith("Row 3: alcohol content 'not-a-number' must be a number")
 
 
 def test_row_without_a_cola_id_is_reported():
@@ -97,9 +98,9 @@ def test_bom_prefixed_csv_from_excel_is_handled():
 # --- exports from other tools ---------------------------------------------
 
 def test_an_unparseable_or_infinite_abv_is_a_row_error():
-    for value in ("nan", "inf", "-inf"):
+    for value in ("nan", "inf", "-inf", "0", "-5", "450"):
         p = parse_records(f"cola_id,brand,abv\n1,X,{value}\n".encode(), "x.csv")
-        assert not p.records and "not a number" in p.errors[0]
+        assert not p.records and "must be a number between 0 and 100" in p.errors[0]
 
 
 def test_a_decimal_comma_abv_is_read():

@@ -1,4 +1,4 @@
-"""Optional model assistance. Off by default; never on the path to a rejection.
+"""Optional model assistance, never on the path to a rejection.
 
 Two features live here, and both sit downstream of the rule engine:
 
@@ -9,7 +9,8 @@ Two features live here, and both sit downstream of the rule engine:
                   so an agent working a 300-label batch starts with the ones
                   that matter. It never changes a verdict.
 
-The default deployment runs neither against a remote model and makes no
-outbound call. See docs/DECISIONS.md, "The model is a second opinion, never a
-judge".
+Each switches on only when its credential is present: an OpenRouter or
+Anthropic key for the second reading, an AI Gateway key or Vercel's OIDC token
+for triage by Jev. Without them the app makes no outbound call and triage uses
+a local heuristic. See docs/DECISIONS.md.
 """

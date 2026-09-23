@@ -50,7 +50,7 @@ def test_dropped_word_flags_as_a_transcription_dropout():
                                         "alcoholic during pregnancy")
     r = check_warning_text(dropped)
     assert r.verdict is Verdict.FLAG
-    assert "imperfect read" in r.reason
+    assert "misread" in r.reason and "missing 'beverages'" in r.reason
 
 
 def test_substituted_wording_still_fails():

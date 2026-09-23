@@ -127,7 +127,10 @@ def test_only_requested_fields_of_the_right_shape_are_used():
     assert clean == {"brand_name": "STONE'S THROW"}
 
 
-def test_warning_dropout_is_cleared_by_a_complete_reading():
+def test_the_warning_wording_is_never_offered_to_a_second_reading():
+    """A vision model knows the statute by heart. A reading that returns it
+    whole cannot be told from one that corrected an altered statement, so the
+    wording stays with OCR and the agent."""
     dropped = STATUTORY_WARNING.replace(" a car", "")
     ext = LabelExtraction(brand_name="STONE'S THROW", class_type="Straight Rye Whiskey",
                           alcohol_statement="50% Alc./Vol. (100 Proof)", net_contents="750 mL",
@@ -135,8 +138,9 @@ def test_warning_dropout_is_cleared_by_a_complete_reading():
     reader = FakeReader({"warning_text": STATUTORY_WARNING})
     before, (after, tel) = run(ext, reader)
     assert before.verdict is Verdict.FLAG
-    assert after.verdict is Verdict.PASS
-    assert tel["cleared"] == ["government_warning"]
+    assert after.verdict is Verdict.FLAG
+    assert reader.calls == []
+    assert tel == {"called": False}
 
 
 def test_undetermined_boldness_can_be_settled_by_a_second_reading():
@@ -365,7 +369,41 @@ def test_type_too_small_to_measure_stays_with_an_agent():
     reader = FakeReader({"warning_text": STATUTORY_WARNING, "warning_prefix_is_bold": True})
     before, (after, tel) = run(ext, reader)
     assert before.verdict is Verdict.FLAG
-    assert tel["cleared"] == ["government_warning"]
+    assert tel.get("cleared", []) == []
     typography = next(c for c in after.checks if c.field == "warning_typography")
     assert typography.verdict is Verdict.FLAG and not typography.read_uncertain
     assert after.verdict is Verdict.FLAG
+
+
+# --- one statement, one reading ---------------------------------------------
+
+def test_a_reading_that_contradicts_a_sibling_row_clears_nothing():
+    """The percentage and the proof come from one statement. A reading that
+    fixes the percentage and breaks the proof is not adopted for either: a
+    checklist with a PASS for 50% beside a PASS for "45% is 90 proof" read two
+    different labels."""
+    ext = _glare_extraction(brand_name="STONE'S THROW",
+                            alcohol_statement="45% Alc./Vol. (90 Proof)",
+                            field_confidence={"alcohol_content": 55.0, "proof_consistency": 55.0})
+    reader = FakeReader({"alcohol_statement": "50% Alc./Vol. (90 Proof)"})
+    before, (after, tel) = run(ext, reader)
+    assert before.verdict is Verdict.FLAG
+    assert reader.calls == [["alcohol_statement"]]
+    assert after.verdict is Verdict.FLAG
+    assert tel["cleared"] == []
+    assert all(c.source == "ocr" for c in after.checks)
+
+
+def test_an_adopted_reading_supplies_every_row_of_its_statement():
+    ext = _glare_extraction(brand_name="STONE'S THROW",
+                            alcohol_statement="45% Alc./Vol. (90 Proof)",
+                            field_confidence={"alcohol_content": 55.0, "proof_consistency": 55.0})
+    reader = FakeReader({"alcohol_statement": "50% Alc./Vol. (100 Proof)"})
+    before, (after, tel) = run(ext, reader)
+    assert before.verdict is Verdict.FLAG
+    assert after.verdict is Verdict.PASS
+    assert tel["cleared"] == ["alcohol_content"]
+    rows = {c.field: c for c in after.checks}
+    for field in ("alcohol_content", "alcohol_format", "proof_consistency"):
+        assert rows[field].source == "second_opinion"
+    assert "100 proof" in rows["proof_consistency"].reason

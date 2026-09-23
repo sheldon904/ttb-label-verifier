@@ -37,6 +37,11 @@ from app.models import ApplicationRecord, CheckResult, LabelExtraction, ReviewRe
 from app.rules.engine import aggregate, review
 
 # Checklist row -> the extraction field a second reading would replace.
+#
+# The warning's wording is not here, on purpose. A vision model knows the
+# statute by heart and tends to return it whole, so a reading that "clears" a
+# warning cannot be told from one that corrected an altered statement back to
+# the statute. Its wording stays with OCR and the agent.
 ROW_TO_FIELD = {
     "brand_name": "brand_name",
     "class_type": "class_type",
@@ -47,7 +52,6 @@ ROW_TO_FIELD = {
     "bottler_name": "bottler_name",
     "bottler_address": "bottler_address",
     "country_of_origin": "country_of_origin",
-    "government_warning": "warning_text",
     "warning_typography": "warning_prefix_is_bold",
 }
 
@@ -144,23 +148,37 @@ async def apply_second_opinion(
     # confidence for them no longer applies.
     update["field_confidence"] = {k: v for k, v in extraction.field_confidence.items()
                                   if k not in uncertain_rows}
-    if "warning_text" in reads:
-        update["warning_legibility"] = "read"
     second = review(record, extraction.model_copy(update=update))
     by_field = {c.field: c for c in second.checks}
+    before = {c.field: c for c in result.checks}
+
+    # A reading replaces a field, and every row computed from that field has to
+    # hold on it. An alcohol statement that clears the percentage and
+    # contradicts the proof clears nothing: the rows of one statement never
+    # come from two different readings of it.
+    rank = {Verdict.PASS: 0, Verdict.FLAG: 1, Verdict.FAIL: 2}
+    adopted = set()
+    for field in reads:
+        rows_of = [r for r, f in ROW_TO_FIELD.items() if f == field and r in before and r in by_field]
+        if (all(by_field[r].verdict is Verdict.PASS for r in rows_of if r in uncertain_rows)
+                and all(rank[by_field[r].verdict] <= rank[before[r].verdict] for r in rows_of)):
+            adopted.add(field)
 
     checks: list[CheckResult] = []
     for c in result.checks:
         s = by_field.get(c.field)
-        if c.field in uncertain_rows and s is not None and s.verdict is Verdict.PASS:
-            telemetry["cleared"].append(c.field)
+        if s is not None and ROW_TO_FIELD.get(c.field) in adopted:
+            passes = s.verdict is Verdict.PASS
+            if passes and c.verdict is not Verdict.PASS:
+                telemetry["cleared"].append(c.field)
             checks.append(s.model_copy(update={
                 "source": "second_opinion",
                 "read_uncertain": False,
                 "reason": (
-                    "OCR could not read this reliably. A second reading of the image by "
-                    f"{reader.name} gives a value that passes: {s.reason} "
-                    "Confirm on the artwork."
+                    ("OCR could not read this reliably. " if c.field in uncertain_rows else "")
+                    + f"A second reading of the image by {reader.name} "
+                    + (f"gives a value that passes: {s.reason} Confirm on the artwork." if passes
+                       else f"reads it this way: {s.reason}")
                 ),
             }))
         else:
@@ -201,7 +219,6 @@ def user_text(fields: list[str]) -> str:
 # --- Anthropic Messages API --------------------------------------------------
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-API_URL = ANTHROPIC_URL  # kept for callers of the earlier name
 
 
 def build_request(model: str, image_b64: str, fields: list[str]) -> dict:

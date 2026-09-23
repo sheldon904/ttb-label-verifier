@@ -1,0 +1,30 @@
+{
+  "id": "ai_gin_arched",
+  "description": "AI-generated gin label, brand set in an arch over heavy botanical line art",
+  "record": {
+    "cola_id": "27-007",
+    "brand_name": "Hollow Oak",
+    "class_type": "London Dry Gin",
+    "alcohol_content_pct": 47.0,
+    "net_contents": "750 mL",
+    "bottler_name": "Hollow Oak Distilling",
+    "bottler_address": "Asheville, North Carolina"
+  },
+  "observations": {
+    "brand_name": "HOLLOW OAK",
+    "class_type": "London Dry Gin",
+    "alcohol_statement": "47% Alc./Vol. (94 Proof)",
+    "net_contents": "750 mL",
+    "bottler_name": "Distilled and Bottled by Hollow Oak Distilling",
+    "bottler_address": "Asheville, North Carolina",
+    "country_of_origin": null,
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_small_type": false,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": [],
+  "generated_by": "google/gemini-3.1-flash-image"
+}

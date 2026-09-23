@@ -30,10 +30,16 @@ from app.config import REPO_ROOT, load_settings
 from app.extract.factory import build_extractor
 from app.models import ApplicationRecord
 from app.pipeline import review_label
-from app.rules.engine import stacked_brand
+from app.rules.engine import read_brand_and_class
 from eval.report import EvalSummary, FixtureOutcome, render
 
-FIXTURE_DIR = REPO_ROOT / "fixtures" / "labels"
+# Two sets. "rendered" is drawn by fixtures/generate.py, so every word on it is
+# known. "ai" is artwork from an image model, as the brief suggests; its truth
+# was read off each image by eye, including the model's own misspellings.
+FIXTURE_SETS = {
+    "rendered": REPO_ROOT / "fixtures" / "labels",
+    "ai": REPO_ROOT / "fixtures" / "ai",
+}
 OUT_DIR = REPO_ROOT / "eval" / "out"
 
 # Fields scored for extraction accuracy. Compared case-sensitively: for the
@@ -50,12 +56,26 @@ def tesseract_version() -> str | None:
         return None
 
 
-def load_fixtures() -> list[dict]:
+def fixture_image(truth_path: Path) -> Path:
+    """The image beside a truth file: PNG for the rendered set, JPEG for the AI set."""
+    stem = truth_path.name.removesuffix(".truth.json")
+    for ext in (".png", ".jpg"):
+        image = truth_path.with_name(stem + ext)
+        if image.is_file():
+            return image
+    raise FileNotFoundError(f"no image for {truth_path.name}")
+
+
+def load_fixtures(which: str = "all") -> list[dict]:
     out = []
-    for p in sorted(FIXTURE_DIR.glob("*.truth.json")):
-        d = json.loads(p.read_text(encoding="utf-8"))
-        d["_image"] = p.with_name(p.name.replace(".truth.json", ".png"))
-        out.append(d)
+    for name, folder in FIXTURE_SETS.items():
+        if which not in ("all", name):
+            continue
+        for p in sorted(folder.glob("*.truth.json")):
+            d = json.loads(p.read_text(encoding="utf-8"))
+            d["_image"] = fixture_image(p)
+            d["_set"] = name
+            out.append(d)
     return out
 
 
@@ -78,13 +98,13 @@ async def run_one(fx: dict, extractor, sem: asyncio.Semaphore, reader=None, tria
         except Exception as exc:  # noqa: BLE001 - the report records the failure
             return FixtureOutcome(
                 id=fx["id"], description=fx["description"], expected=fx["expected_verdict"],
-                actual="error", expected_fields=fx["expected_failing_fields"],
+                fixture_set=fx["_set"], actual="error", expected_fields=fx["expected_failing_fields"],
                 actual_failing_fields=[], field_hits={}, total_ms=0,
                 error=f"{type(exc).__name__}: {exc}",
             )
 
         observed = bundle.extraction.model_dump()
-        brand, klass, _ = stacked_brand(record, bundle.extraction)
+        brand, klass, _ = read_brand_and_class(record, bundle.extraction)
         observed |= {"brand_name": brand, "class_type": klass}
         failing = [c.field for c in bundle.result.checks if c.verdict.value != "pass"]
         # A row that FAILS without the fixture being built to fail it is a false
@@ -94,6 +114,7 @@ async def run_one(fx: dict, extractor, sem: asyncio.Semaphore, reader=None, tria
                        if c.verdict.value == "fail" and c.field not in fx["expected_failing_fields"]]
         return FixtureOutcome(
             id=fx["id"], description=fx["description"], expected=fx["expected_verdict"],
+            fixture_set=fx["_set"],
             actual=bundle.result.verdict.value,
             expected_fields=fx["expected_failing_fields"],
             actual_failing_fields=failing,
@@ -121,7 +142,7 @@ async def main_async(args) -> int:
               "ANTHROPIC_API_KEY.", file=sys.stderr)
         return 1
 
-    fixtures = load_fixtures()
+    fixtures = load_fixtures(args.set)
     if not fixtures:
         print("No fixtures found. Run `make fixtures` first.", file=sys.stderr)
         return 1
@@ -153,9 +174,13 @@ async def main_async(args) -> int:
     out.write_text(render(summary), encoding="utf-8")
 
     unsafe = len(summary.unsafe_misses)
-    print(f"\n{summary.accuracy:.1%} verdict accuracy over {summary.n} fixtures; "
-          f"{len(summary.cautious_misses)} referred unnecessarily; "
-          f"{len(summary.referred_defects)} defect(s) referred not rejected; {unsafe} harmful")
+    for name in FIXTURE_SETS:
+        part = summary.of_set(name)
+        if part.n:
+            print(f"\n{name}: {part.accuracy:.1%} verdict accuracy over {part.n} fixtures; "
+                  f"{len(part.cautious_misses)} referred unnecessarily; "
+                  f"{len(part.referred_defects)} defect(s) referred not rejected; "
+                  f"{len(part.unsafe_misses)} harmful")
     print(f"p50 {summary.pct(50)} ms, p95 {summary.pct(95)} ms"
           + (f" (interactive budget 5000 ms: {'MET' if summary.pct(95) < 5000 else 'MISSED'})"
              if args.concurrency == 1 else " (under load)"))
@@ -166,8 +191,11 @@ async def main_async(args) -> int:
     if unsafe > args.max_unsafe:
         print(f"\nFAIL: {unsafe} harmful outcome(s); the limit is {args.max_unsafe}.", file=sys.stderr)
         return 2
-    if summary.accuracy < args.min_accuracy:
-        print(f"\nFAIL: accuracy {summary.accuracy:.1%} is below the floor of "
+    # Accuracy is gated on the rendered set, whose every word is known. The AI
+    # set is gated on harm alone: artwork OCR cannot read is meant to be referred.
+    gated = summary.of_set("rendered") if summary.of_set("rendered").n else summary
+    if gated.accuracy < args.min_accuracy:
+        print(f"\nFAIL: accuracy {gated.accuracy:.1%} is below the floor of "
               f"{args.min_accuracy:.0%}.", file=sys.stderr)
         return 2
     return 0
@@ -186,7 +214,10 @@ def main() -> int:
     p.add_argument("--max-unsafe", type=int, default=0,
                    help="Exit non-zero above this many harmful outcomes. Default 0.")
     p.add_argument("--min-accuracy", type=float, default=0.80,
-                   help="Exit non-zero below this verdict accuracy. Default 0.80.")
+                   help="Exit non-zero below this verdict accuracy on the rendered set. "
+                        "Default 0.80.")
+    p.add_argument("--set", choices=["all", "rendered", "ai"], default="all",
+                   help="Which fixtures: the rendered set, the AI-generated set, or both. Default all.")
     p.add_argument("--out", help="Write the report here. Default eval/out/report.md.")
     return asyncio.run(main_async(p.parse_args()))
 

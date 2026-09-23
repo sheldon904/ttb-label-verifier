@@ -1,0 +1,31 @@
+{
+  "id": "ai_scotch_import",
+  "description": "AI-generated Scotch import, alcohol and volume on one line, age statement under the class",
+  "record": {
+    "cola_id": "27-012",
+    "brand_name": "Glen Arden",
+    "class_type": "Single Malt Scotch Whisky",
+    "alcohol_content_pct": 43.0,
+    "net_contents": "750 mL",
+    "bottler_name": "Highland Trading Co.",
+    "bottler_address": "Boston, Massachusetts",
+    "country_of_origin": "Product of Scotland"
+  },
+  "observations": {
+    "brand_name": "GLEN ARDEN",
+    "class_type": "Single Malt Scotch Whisky",
+    "alcohol_statement": "43% Alc./Vol. (86 Proof) 750 mL",
+    "net_contents": "750 mL",
+    "bottler_name": "Imported by Highland Trading Co.",
+    "bottler_address": "Boston, Massachusetts",
+    "country_of_origin": "Product of Scotland",
+    "warning_text": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+    "warning_prefix_is_bold": true,
+    "warning_small_type": false,
+    "warning_legibility": "read",
+    "legibility_notes": []
+  },
+  "expected_verdict": "pass",
+  "expected_failing_fields": [],
+  "generated_by": "google/gemini-3.1-flash-image"
+}

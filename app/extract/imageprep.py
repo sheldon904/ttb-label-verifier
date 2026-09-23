@@ -14,6 +14,7 @@ reason for choosing a classical pipeline here.
 
 from __future__ import annotations
 
+import base64
 import io
 import math
 from dataclasses import dataclass
@@ -37,6 +38,11 @@ MAX_IMAGE_PIXELS = 64_000_000
 # ground (black and gold spirits labels are common); it is inverted so the
 # text is dark, which the bold measurement and binarisation assume.
 DARK_LABEL_MEDIAN = 100
+
+# Measured on the prepared render: every sharp label, rendered, photographed
+# or AI-generated, scores 60 or more; a 1.5-pixel blur scores 10, and a label
+# shrunk to 45% before being enlarged back scores 15.
+SOFT_SHARPNESS = 30.0
 SKEW_SEARCH_DEG = 12.0
 SKEW_STEP_DEG = 0.25
 
@@ -73,6 +79,9 @@ class PreparedImage:
     # image the agent sees.
     working_size: tuple[int, int] = (0, 0)
     inverted: bool = False
+    # Edge strength of the render OCR reads (see sharpness). Below
+    # SOFT_SHARPNESS the picture is out of focus or was too small.
+    sharpness: float = 0.0
 
     @property
     def was_deskewed(self) -> bool:
@@ -152,6 +161,23 @@ def binarize(img: Image.Image) -> Image.Image:
     gray = _to_grayscale_array(img)
     t = _otsu_threshold(gray)
     return Image.fromarray(((gray > t) * 255).astype(np.uint8), mode="L")
+
+
+def sharpness(img: Image.Image) -> float:
+    """How crisp the strongest edges are: the 99th percentile of the Laplacian.
+
+    Text gives a sharp picture a few very strong edges; blur spreads them out.
+    The top percentile ignores blank paper, which says nothing about focus.
+    """
+    # int16 holds every value the kernel can produce (at most 8 x 255), and a
+    # partition finds the percentile without a sort: 22 ms on a 2200 px render.
+    a = np.asarray(img.convert("L"), dtype=np.int16)
+    lap = np.abs(4 * a[1:-1, 1:-1] - a[:-2, 1:-1] - a[2:, 1:-1] - a[1:-1, :-2] - a[1:-1, 2:])
+    flat = lap.ravel()
+    if not flat.size:
+        return 0.0
+    k = int(flat.size * 0.99)
+    return float(np.partition(flat, k)[k])
 
 
 def estimate_skew(img: Image.Image) -> float:
@@ -257,6 +283,30 @@ def _decode(raw: bytes) -> tuple[Image.Image, tuple[int, int]]:
         raise UnreadableImageError(_UNREADABLE) from exc
 
 
+# TIFF, which scanners produce and COLAs accept, is the one upload format
+# Chrome, Edge and Firefox cannot display.
+_TIFF_MAGIC = (b"II*\x00", b"MM\x00*")
+PREVIEW_EDGE = 1400
+
+
+def browser_preview(raw: bytes) -> str | None:
+    """A JPEG of a TIFF upload as a data URI, for the artwork panel.
+
+    Without it the agent saw a broken image and no evidence boxes beside the
+    checklist. None for every format a browser shows by itself.
+    """
+    if raw[:4] not in _TIFF_MAGIC:
+        return None
+    try:
+        img, _ = _decode(raw)
+    except UnreadableImageError:
+        return None
+    img.thumbnail((PREVIEW_EDGE, PREVIEW_EDGE), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
 def prepare_for_ocr(raw: bytes) -> PreparedImage:
     import hashlib
 
@@ -271,8 +321,11 @@ def prepare_for_ocr(raw: bytes) -> PreparedImage:
         img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
     working_size = img.size
 
-    gray = np.asarray(img.convert("L"), dtype=np.uint8)
-    inverted = bool(np.median(gray) < DARK_LABEL_MEDIAN)
+    # OCR reads luminance. Given colour, Tesseract thresholds on its own and
+    # lost a black-on-white warning strip on an orange beer label entirely:
+    # 20 words read against 62 from the same picture made grey here first.
+    img = img.convert("L")
+    inverted = bool(np.median(np.asarray(img, dtype=np.uint8)) < DARK_LABEL_MEDIAN)
     if inverted:
         img = ImageOps.invert(img)
 
@@ -280,7 +333,10 @@ def prepare_for_ocr(raw: bytes) -> PreparedImage:
     matrix = None
     if abs(skew) >= 0.5:
         matrix, _ = rotation_inverse_matrix(img.width, img.height, skew)
-        img = img.rotate(skew, resample=Image.BICUBIC, expand=True, fillcolor=(255, 255, 255))
+        # White corners. A fill in the label's own grey let a dim, tilted
+        # photograph be read, and turned a compliant AI-generated phone photo
+        # from a referral into a rejection, so white stays.
+        img = img.rotate(skew, resample=Image.BICUBIC, expand=True, fillcolor=255)
     rotated_size = img.size
 
     factor = 1.0
@@ -290,6 +346,7 @@ def prepare_for_ocr(raw: bytes) -> PreparedImage:
         img = img.resize((round(img.width * factor), round(img.height * factor)), Image.LANCZOS)
 
     img = img.filter(ImageFilter.UnsharpMask(radius=1.4, percent=110, threshold=2))
+    focus = sharpness(img)
 
     return PreparedImage(
         image=img,
@@ -304,4 +361,5 @@ def prepare_for_ocr(raw: bytes) -> PreparedImage:
         rotation_matrix=matrix,
         working_size=working_size,
         inverted=inverted,
+        sharpness=focus,
     )

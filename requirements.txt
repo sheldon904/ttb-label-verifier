@@ -5,7 +5,7 @@ uvicorn[standard]==0.53.0
 pydantic==2.13.5
 python-multipart==0.0.32
 jinja2==3.1.6
-pillow==12.3.0
+pillow==13.0.0
 numpy==2.4.6
 rapidfuzz==3.14.6
 pytesseract==0.3.13
